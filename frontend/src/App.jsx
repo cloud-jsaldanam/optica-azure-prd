@@ -46,14 +46,15 @@ export default function App() {
   const saldoCalculado = (Number(total) || 0) - (Number(aCuenta) || 0);
 
   // =========================================================================
-  // INTERCEPTOR SEGURO: INYECCIÓN DE CABECERA PERSONALIZADA
-  // Enviamos 'Authorization' y 'x-optica-auth' para evitar el filtrado en la nube
+  // INTERCEPTOR BLINDADO: LECTURA DIRECTA EN TIEMPO REAL
+  // Leemos siempre de localStorage para evitar la latencia del estado de React
   // =========================================================================
   const fetchSeguro = async (endpoint, options = {}) => {
+    const tokenActual = localStorage.getItem('jwt_optica') || token;
     const headers = { 
       ...options.headers, 
-      'Authorization': `Bearer ${token}`,
-      'x-optica-auth': `Bearer ${token}` 
+      'Authorization': `Bearer ${tokenActual}`,
+      'x-optica-auth': `Bearer ${tokenActual}` 
     };
     const res = await fetch(endpoint, { ...options, headers });
     if (res.status === 401) {
@@ -65,7 +66,7 @@ export default function App() {
   };
 
   const cargarDashboard = async () => {
-    if (!token) return;
+    if (!localStorage.getItem('jwt_optica')) return;
     try {
       const res = await fetchSeguro('/api/dashboard');
       if (res.ok) {
@@ -83,11 +84,11 @@ export default function App() {
           });
         }
       }
-    } catch (err) { /* Gestionado por el wrapper */ }
+    } catch (err) { /* Gestionado silenciosamente por la UI */ }
   };
 
   const cargarDirectorioGlobal = async () => {
-    if (!token) return;
+    if (!localStorage.getItem('jwt_optica')) return;
     setCargandoDirectorio(true);
     try {
       const res = await fetchSeguro('/api/clientes');
@@ -114,8 +115,12 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) { 
+        // 1. Guardamos en disco duro inmediatamente
         localStorage.setItem('jwt_optica', data.token); 
+        // 2. Actualizamos estado visual
         setToken(data.token); 
+        // 3. Forzamos la carga analítica directa con la firma fresca
+        setTimeout(() => cargarDashboard(), 100);
       } else {
         setErrorLogin(data.error || 'Credenciales corporativas inválidas');
       }
