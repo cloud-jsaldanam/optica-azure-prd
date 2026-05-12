@@ -19,7 +19,7 @@ const USUARIOS_AUTORIZADOS: Record<string, { pass: string, nombre: string, role:
 const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
     const path = context.bindingData?.path || req.params?.path;
 
-    // 1. ENDPOINT: AUTENTICACIÓN FLEXIBLE
+    // 1. ENDPOINT: AUTENTICACIÓN
     if (path === "login" && req.method === "POST") {
         try {
             const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
@@ -51,24 +51,19 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
     try { sesionActual = jwt.verify(authHeader.split(" ")[1], JWT_SECRET_CORE) as any; } 
     catch (err) { context.res = { status: 401, body: { error: `Firma rechazada: ${err.message}` }, headers: { "Content-Type": "application/json" } }; return; }
 
-    // =========================================================================
-    // 2. ENDPOINT: DIRECTORIO GLOBAL (Sin ORDER BY SQL para eludir bloqueos de índices)
-    // =========================================================================
+    // 2. ENDPOINT: DIRECTORIO GLOBAL (Procesamiento en RAM)
     if (path === "clientes" && req.method === "GET") {
         try {
             const { resources: clientesRaw } = await container.items
                 .query("SELECT c.dni, c.nombres, c.telefono, c.direccion FROM c WHERE c.tipo = 'cliente'")
                 .fetchAll();
             
-            // Ordenamiento alfabético garantizado nativamente en RAM
             const clientes = (clientesRaw || []).sort((a, b) => (a.nombres || "").localeCompare(b.nombres || ""));
             context.res = { status: 200, body: { clientes }, headers: { "Content-Type": "application/json" } }; return;
         } catch (e) { context.res = { status: 500, body: { error: `Error recuperando directorio: ${e.message}` }, headers: { "Content-Type": "application/json" } }; return; }
     }
 
-    // =========================================================================
-    // 3. ENDPOINT: CONSULTA DE EXPEDIENTE (Ordenamiento cronológico en RAM)
-    // =========================================================================
+    // 3. ENDPOINT: CONSULTA DE EXPEDIENTE
     if (path === "cliente" && req.method === "GET") {
         const dni = req.query?.dni?.trim();
         if (!dni) { context.res = { status: 400, body: { error: "DNI requerido" }, headers: { "Content-Type": "application/json" } }; return; }
@@ -80,7 +75,6 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
                     parameters: [{ name: "@cliId", value: `cli_${dni}` }]
                 }).fetchAll();
             
-            // Ordenamos por fecha descendente en memoria RAM
             const ordenes = (ordenesRaw || []).sort((a, b) => new Date(b.fechaOrden || 0).getTime() - new Date(a.fechaOrden || 0).getTime());
             context.res = { status: 200, body: { cliente: cliente || null, ordenes }, headers: { "Content-Type": "application/json" } }; return;
         } catch (e) { context.res = { status: 500, body: { error: `Error consultando BD: ${e.message}` }, headers: { "Content-Type": "application/json" } }; return; }
@@ -109,7 +103,7 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
     }
 
     // =========================================================================
-    // 5. ENDPOINT: BORRADO INTELIGENTE EN CASCADA
+    // 5. ENDPOINT: BORRADO REFORZADO (Destruye huérfanos físicamente en cascada)
     // =========================================================================
     if (path === "venta" && req.method === "DELETE") {
         if (sesionActual.role !== "admin") {
@@ -120,43 +114,36 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         if (!idOrden) { context.res = { status: 400, body: { error: "ID de orden requerido" }, headers: { "Content-Type": "application/json" } }; return; }
         
         try {
+            // 1. Leemos la orden para saber a qué cliente pertenece
             const { resource: ordenDoc } = await container.item(idOrden, "orden").read();
-            if (!ordenDoc) {
-                context.res = { status: 404, body: { error: "Orden no localizada en la base de datos." }, headers: { "Content-Type": "application/json" } }; return;
-            }
+            const clienteId = ordenDoc?.clienteId; // ej. cli_48385573
 
-            const clienteId = ordenDoc.clienteId;
-
-            // 1. Purgamos la orden específica
+            // 2. Destruimos el documento de la orden de forma física
             await container.item(idOrden, "orden").delete().catch(()=>{});
 
-            // 2. Verificamos si al cliente le quedan historiales activos
+            // 3. Purgado estricto: Si tenemos el clienteId, verificamos si le quedan más órdenes
             if (clienteId) {
                 const { resources: ordenesRestantes } = await container.items.query({
                     query: "SELECT * FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cliId",
                     parameters: [{ name: "@cliId", value: clienteId }]
                 }).fetchAll();
 
-                // Si ya no le quedan órdenes, purgar el perfil principal para limpiar el Directorio Global
+                // Si ya no quedan órdenes para este DNI, fulminamos el perfil del cliente para limpiar el directorio
                 if (!ordenesRestantes || ordenesRestantes.length === 0) {
                     await container.item(clienteId, "cliente").delete().catch(()=>{});
                 }
             }
 
-            context.res = { status: 200, body: { mensaje: `Orden ${idOrden} eliminada correctamente.` }, headers: { "Content-Type": "application/json" } }; return;
-        } catch (e) { context.res = { status: 500, body: { error: `Fallo al purgar registros: ${e.message}` }, headers: { "Content-Type": "application/json" } }; return; }
+            context.res = { status: 200, body: { mensaje: `Orden purgada con éxito.` }, headers: { "Content-Type": "application/json" } }; return;
+        } catch (e) { context.res = { status: 500, body: { error: `Fallo al purgar registros físicos: ${e.message}` }, headers: { "Content-Type": "application/json" } }; return; }
     }
 
-    // =========================================================================
-    // 6. ENDPOINT: DASHBOARD (Cálculos analíticos 100% extraídos y agrupados en RAM)
-    // =========================================================================
+    // 6. ENDPOINT: DASHBOARD (Mapeo estricto en RAM)
     if (path === "dashboard" && req.method === "GET") {
         try {
-            // Extraemos todas las órdenes sin filtros SQL complejos
             const { resources: todasOrdenes } = await container.items.query("SELECT * FROM c WHERE c.tipo = 'orden'").fetchAll();
             const ordenesValidas = todasOrdenes || [];
 
-            // Top Ventas: Ordenamos por fecha descendente y cortamos los 5 primeros
             const ordenesOrdenadas = [...ordenesValidas].sort((a, b) => new Date(b.fechaOrden || 0).getTime() - new Date(a.fechaOrden || 0).getTime());
             const topVentas = ordenesOrdenadas.slice(0, 5).map(o => ({
                 numeroOrden: o.numeroOrden,
@@ -164,13 +151,11 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
                 fechaOrden: o.fechaOrden
             }));
 
-            // Top Clientes: Agrupamos ocurrencias en un mapa temporal
             const conteoClientes: Record<string, number> = {};
             ordenesValidas.forEach(o => {
                 if (o.clienteId) conteoClientes[o.clienteId] = (conteoClientes[o.clienteId] || 0) + 1;
             });
 
-            // Ordenamos clientes por cantidad de compras
             const clientesOrdenados = Object.entries(conteoClientes).sort((a, b) => b[1] - a[1]).slice(0, 5);
             const topClientes = await Promise.all(clientesOrdenados.map(async ([cliId, count]) => {
                 try {
