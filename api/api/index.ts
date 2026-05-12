@@ -4,7 +4,7 @@ import * as jwt from "jsonwebtoken";
 
 const endpoint = process.env.COSMOS_ENDPOINT || "";
 const key = process.env.COSMOS_KEY || "";
-// Constante inyectada directamente en memoria para garantizar consistencia criptográfica
+// Firma inyectada en memoria para evitar fallos de propagación de variables en ASWA
 const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 
 const client = new CosmosClient({ endpoint, key });
@@ -13,160 +13,188 @@ const container = client.database("OpticaDB").container("Registros");
 const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
     const path = context.bindingData?.path || req.params?.path;
 
-    // 1. ENDPOINT: LOGIN Y VALIDACIÓN
+    // 1. ENDPOINT: AUTENTICACIÓN
     if (path === "login" && req.method === "POST") {
         try {
-            const { usuario, password } = req.body || {};
+            // Soportamos tanto envío crudo como parseado por la infraestructura
+            const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+            const usuario = payload.usuario?.trim();
+            const password = payload.password?.trim();
+
             if (usuario === "admin" && password === "OpticaSegura2026*") {
-                const token = jwt.sign(
-                    { user: "admin", role: "optometra", ts: Date.now() }, 
-                    JWT_SECRET_CORE, 
-                    { expiresIn: "24h" }
-                );
+                const token = jwt.sign({ user: "admin", role: "optometra" }, JWT_SECRET_CORE, { expiresIn: "24h" });
                 context.res = { 
                     status: 200, 
-                    body: { token },
-                    headers: { "Content-Type": "application/json" }
+                    body: { token }, 
+                    headers: { "Content-Type": "application/json" } 
                 };
                 return;
             }
-            context.res = { status: 401, body: { error: "Credenciales de acceso no válidas" } };
-        } catch (err) {
-            context.res = { status: 500, body: { error: "Fallo transaccional durante la autenticación" } };
+            context.res = { 
+                status: 401, 
+                body: { error: "Credenciales de acceso incorrectas" }, 
+                headers: { "Content-Type": "application/json" } 
+            };
+        } catch (err) { 
+            context.res = { 
+                status: 500, 
+                body: { error: "Error interno del servidor al procesar la identidad" }, 
+                headers: { "Content-Type": "application/json" } 
+            }; 
         }
         return;
     }
 
-    // CAPA MIDDLEWARE: INTERCEPCIÓN Y VALIDACIÓN DE TOKENS JWT
-    const authHeader = req.headers?.authorization;
+    // =========================================================================
+    // MIDDLEWARE JWT: PUENTEO DE FILTRO ASWA EDGE
+    // Capturamos la cabecera estándar y nuestra alternativa nativa 'x-optica-auth'
+    // =========================================================================
+    const authHeader = req.headers?.authorization || req.headers?.['x-optica-auth'] || req.headers?.['custom-authorization'];
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        context.res = { status: 401, body: { error: "Acceso denegado. Se requiere un token de sesión activo." } };
-        return;
-    }
-    const token = authHeader.split(" ")[1];
-    try {
-        // Validación estricta contra la misma firma en memoria
-        jwt.verify(token, JWT_SECRET_CORE);
-    } catch (err) {
-        context.res = { status: 401, body: { error: "Firma de sesión expirada o corrupta." } };
+        context.res = { 
+            status: 401, 
+            body: { error: "Acceso denegado. Se requiere un token de sesión activo." }, 
+            headers: { "Content-Type": "application/json" } 
+        }; 
         return;
     }
 
-    // 2. ENDPOINT: RECUPERACIÓN DE HISTORIAL DE CLIENTE (MÓDULO 2)
+    const tokenString = authHeader.split(" ")[1];
+    try { 
+        jwt.verify(tokenString, JWT_SECRET_CORE); 
+    } catch (err) { 
+        context.res = { 
+            status: 401, 
+            body: { error: "Firma de sesión expirada o corrupta." }, 
+            headers: { "Content-Type": "application/json" } 
+        }; 
+        return; 
+    }
+
+    // 2. ENDPOINT: DIRECTORIO GLOBAL DE CLIENTES
+    if (path === "clientes" && req.method === "GET") {
+        try {
+            const { resources: clientes } = await container.items
+                .query("SELECT c.dni, c.nombres, c.telefono, c.direccion FROM c WHERE c.tipo = 'cliente' ORDER BY c.nombres ASC")
+                .fetchAll();
+            context.res = { status: 200, body: { clientes }, headers: { "Content-Type": "application/json" } }; 
+            return;
+        } catch (e) { 
+            context.res = { status: 500, body: { error: "Error recuperando directorio global" }, headers: { "Content-Type": "application/json" } }; 
+            return; 
+        }
+    }
+
+    // 3. ENDPOINT: CONSULTA ESPECÍFICA E HISTORIAL
     if (path === "cliente" && req.method === "GET") {
         const dni = req.query?.dni?.trim();
-        if (!dni) {
-            context.res = { status: 400, body: { error: "Parámetro de identificación requerido" } };
-            return;
+        if (!dni) { 
+            context.res = { status: 400, body: { error: "Parámetro DNI requerido" }, headers: { "Content-Type": "application/json" } }; 
+            return; 
         }
         try {
             const { resource: cliente } = await container.item(`cli_${dni}`, "cliente").read();
-            const querySpec = {
-                query: "SELECT * FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cliId ORDER BY c.fechaOrden DESC",
-                parameters: [{ name: "@cliId", value: `cli_${dni}` }]
-            };
-            const { resources: ordenes } = await container.items.query(querySpec).fetchAll();
-            
-            // Si no existe el cliente pero sí se hace la búsqueda, devolvemos 200 con arrays vacíos para no quebrar la UI
+            const { resources: ordenes } = await container.items
+                .query({
+                    query: "SELECT * FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cliId ORDER BY c.fechaOrden DESC",
+                    parameters: [{ name: "@cliId", value: `cli_${dni}` }]
+                }).fetchAll();
             context.res = { 
                 status: 200, 
-                body: { 
-                    cliente: cliente || null, 
-                    ordenes: ordenes || [] 
-                } 
-            };
+                body: { cliente: cliente || null, ordenes: ordenes || [] }, 
+                headers: { "Content-Type": "application/json" } 
+            }; 
             return;
-        } catch (e) {
-            context.res = { status: 500, body: { error: "Fallo de conexión con el repositorio Cosmos DB" } };
-            return;
+        } catch (e) { 
+            context.res = { status: 500, body: { error: "Error de lectura en base de datos" }, headers: { "Content-Type": "application/json" } }; 
+            return; 
         }
     }
 
-    // 3. ENDPOINT: PERSISTENCIA TRANSACCIONAL DE VENTAS (MÓDULO 1)
+    // 4. ENDPOINT: TRANSACCIÓN DE VENTA
     if (path === "venta" && req.method === "POST") {
-        const payload = req.body || {};
-        const { dni, nombres, refraccion, aCuenta, saldo, montura, tipoTrabajo, tratado, fechaEntrega, total } = payload;
-        
-        if (!dni || !nombres) {
-            context.res = { status: 400, body: { error: "Los datos primarios del paciente son obligatorios" } };
-            return;
-        }
-        const timestamp = new Date().toISOString();
         try {
-            // Upsert del Cliente
+            const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+            if (!payload.dni || !payload.nombres) { 
+                context.res = { status: 400, body: { error: "Faltan datos primarios del paciente" }, headers: { "Content-Type": "application/json" } }; 
+                return; 
+            }
+            const timestamp = new Date().toISOString();
+            
             const clienteObj = {
-                id: `cli_${dni}`, 
+                id: `cli_${payload.dni}`, 
                 tipo: "cliente", 
-                dni, 
-                nombres,
+                dni: payload.dni, 
+                nombres: payload.nombres,
                 direccion: payload.direccion || "", 
                 telefono: payload.telefono || "", 
                 fechaRegistro: timestamp
             };
             await container.items.upsert(clienteObj);
 
-            // Creación de la Orden
             const numeroOrden = `ORD-${Date.now().toString().slice(-6)}`;
             const ordenObj = {
                 id: `ord_${numeroOrden}`, 
                 tipo: "orden", 
                 numeroOrden, 
                 fechaOrden: timestamp, 
-                clienteId: `cli_${dni}`,
-                montura: montura || "", 
-                tipoTrabajo: tipoTrabajo || "", 
-                tratado: tratado || "", 
-                refraccion: refraccion || null,
-                aCuenta: Number(aCuenta || 0), 
-                saldo: Number(saldo || 0), 
-                total: Number(total || 0),
-                fechaEntrega: fechaEntrega || "", 
+                clienteId: `cli_${payload.dni}`,
+                montura: payload.montura || "", 
+                tipoTrabajo: payload.tipoTrabajo || "", 
+                tratado: payload.tratado || "",
+                refraccion: payload.refraccion || null, 
+                aCuenta: Number(payload.aCuenta || 0), 
+                saldo: Number(payload.saldo || 0),
+                total: Number(payload.total || 0), 
+                fechaEntrega: payload.fechaEntrega || "", 
                 vendedor: "Admin"
             };
             await container.items.create(ordenObj);
-            
             context.res = { 
                 status: 201, 
-                body: { mensaje: "Venta registrada exitosamente", numeroOrden, cliente: clienteObj } 
-            };
+                body: { mensaje: "Venta registrada exitosamente", numeroOrden, cliente: clienteObj }, 
+                headers: { "Content-Type": "application/json" } 
+            }; 
             return;
-        } catch (e) {
-            context.res = { status: 500, body: { error: "Error de persistencia al escribir en la base de datos" } };
-            return;
+        } catch (e) { 
+            context.res = { status: 500, body: { error: "Saturación al escribir en Cosmos DB" }, headers: { "Content-Type": "application/json" } }; 
+            return; 
         }
     }
 
-    // 4. ENDPOINT: DASHBOARD
+    // 5. ENDPOINT: MÉTRICAS Y DASHBOARD
     if (path === "dashboard" && req.method === "GET") {
         try {
-            const queryVentas = {
-                query: "SELECT TOP 5 c.numeroOrden, c.total, c.fechaOrden FROM c WHERE c.tipo = 'orden' ORDER BY c.fechaOrden DESC"
-            };
-            const { resources: topVentas } = await container.items.query(queryVentas).fetchAll();
-
-            const queryClientes = {
-                query: "SELECT TOP 5 c.clienteId, COUNT(1) as cantidadComprada FROM c WHERE c.tipo = 'orden' GROUP BY c.clienteId ORDER BY COUNT(1) DESC"
-            };
-            const { resources: topClientesRaw } = await container.items.query(queryClientes).fetchAll();
-            
+            const { resources: topVentas } = await container.items
+                .query("SELECT TOP 5 c.numeroOrden, c.total, c.fechaOrden FROM c WHERE c.tipo = 'orden' ORDER BY c.fechaOrden DESC")
+                .fetchAll();
+                
+            const { resources: topClientesRaw } = await container.items
+                .query("SELECT TOP 5 c.clienteId, COUNT(1) as cantidadComprada FROM c WHERE c.tipo = 'orden' GROUP BY c.clienteId ORDER BY COUNT(1) DESC")
+                .fetchAll();
+                
             const topClientes = await Promise.all(topClientesRaw.map(async (item) => {
                 try {
                     const { resource: cli } = await container.item(item.clienteId, "cliente").read();
                     return { nombres: cli?.nombres || item.clienteId, cantidadComprada: item.cantidadComprada };
-                } catch (e) {
-                    return { nombres: item.clienteId, cantidadComprada: item.cantidadComprada };
+                } catch (e) { 
+                    return { nombres: item.clienteId, cantidadComprada: item.cantidadComprada }; 
                 }
             }));
-
-            context.res = { status: 200, body: { topVentas, topClientes } };
+            
+            context.res = { 
+                status: 200, 
+                body: { topVentas, topClientes }, 
+                headers: { "Content-Type": "application/json" } 
+            }; 
             return;
-        } catch (error) {
-            context.res = { status: 500, body: { error: "Error de procesamiento analítico" } };
-            return;
+        } catch (error) { 
+            context.res = { status: 500, body: { error: "Error procesando analíticas" }, headers: { "Content-Type": "application/json" } }; 
+            return; 
         }
     }
-
-    context.res = { status: 404, body: { error: "Endpoint no mapeado en el enrutador" } };
+    
+    context.res = { status: 404, body: { error: "Firma de API solicitada inexistente" }, headers: { "Content-Type": "application/json" } };
 };
 
 export default httpTrigger;
