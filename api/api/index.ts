@@ -1,4 +1,4 @@
-import { Context, HttpRequest } from "@azure/functions";
+import { AzureFunction, Context, HttpRequest } from "@azure/functions";
 import { CosmosClient } from "@azure/cosmos";
 import * as jwt from "jsonwebtoken";
 
@@ -9,7 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "ClaveSecretaOpticaPrd2026";
 const client = new CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
 
-const httpTrigger = async function (context: Context, req: HttpRequest): Promise<void> {
+const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
     const path = context.bindingData?.path || req.params?.path;
 
     // 1. ENDPOINT: LOGIN Y VALIDACIÓN
