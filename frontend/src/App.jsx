@@ -75,14 +75,14 @@ export default function App() {
       const res = await fetchSeguro('/api/dashboard');
       if (res.ok) {
         const data = await res.json();
-        if (data.topVentas?.length) {
+        if (data.topVentas && data.topVentas.length > 0) {
           setDataVentas({ 
             labels: data.topVentas.map(v => v.numeroOrden), 
             datasets: [{ label: 'Monto (S/)', data: data.topVentas.map(v => Number(v.total) || 0), backgroundColor: '#0284c7' }] 
           });
         } else { setDataVentas(null); }
 
-        if (data.topClientes?.length) {
+        if (data.topClientes && data.topClientes.length > 0) {
           setDataClientes({ 
             labels: data.topClientes.map(c => c.nombres?.split(' ')[0] || 'Cliente'), 
             datasets: [{ label: 'Órdenes', data: data.topClientes.map(c => Number(c.cantidadComprada) || 0), backgroundColor: '#059669' }] 
@@ -129,7 +129,10 @@ export default function App() {
     finally { setCargandoLogin(false); }
   };
 
-  const seleccionarDesdeDirectorio = (cliente) => { setBusquedaDni(cliente.dni); consultarExpediente(cliente.dni); };
+  const seleccionarDesdeDirectorio = (cliente) => { 
+    setBusquedaDni(cliente.dni); 
+    consultarExpediente(cliente.dni); 
+  };
 
   const consultarExpediente = async (targetDni) => {
     if (!targetDni) return;
@@ -138,8 +141,10 @@ export default function App() {
       const res = await fetchSeguro(`/api/cliente?dni=${targetDni.trim()}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.cliente || data.ordenes?.length) { setClienteEncontrado(data.cliente); setOrdenesCliente(data.ordenes || []); } 
-        else setEstadoBusqueda('No se localizaron transacciones para este documento.');
+        if (data.cliente || (data.ordenes && data.ordenes.length > 0)) { 
+          setClienteEncontrado(data.cliente); 
+          setOrdenesCliente(data.ordenes || []); 
+        } else { setEstadoBusqueda('No se localizaron transacciones para este documento.'); }
       }
     } catch (err) { setEstadoBusqueda(err.message); } finally { setCargandoBusqueda(false); }
   };
@@ -161,19 +166,18 @@ export default function App() {
     } catch (err) { setErrorForm(err.message); } finally { setCargandoVenta(false); }
   };
 
+  // Sincronización impecable tras confirmar borrado en BD
   const eliminarOrdenRegistro = async (e, ordId, ordNum) => {
     e.stopPropagation(); 
     setErrorForm(''); setMensajeExito('');
-    if (!window.confirm(`¿Confirmas la eliminación definitiva de la orden ${ordNum} y el expediente del paciente asociado? Esta acción lo purgará de la base de datos.`)) return;
+    if (!window.confirm(`¿Confirmas la eliminación definitiva de la orden ${ordNum}?`)) return;
     try {
       const res = await fetchSeguro(`/api/venta?id=${ordId}`, { method: 'DELETE' });
       if (res.ok) {
-        setMensajeExito(`Orden ${ordNum} y expediente purgado exitosamente.`);
-        setOrdenesCliente(prev => prev.filter(o => o.id !== ordId));
-        const targetDni = busquedaDni;
-        setListaDirectorio(prev => prev.filter(c => c.dni !== targetDni));
-        setClienteEncontrado(null);
-        setBusquedaDni('');
+        setMensajeExito(`Orden ${ordNum} eliminada de forma permanente.`);
+        // Recargamos el historial actual y el directorio para reflejar la cascada real de la BD
+        if (busquedaDni) consultarExpediente(busquedaDni);
+        cargarDirectorioGlobal();
         cargarDashboard();
       } else {
         const errData = await res.json();
@@ -191,11 +195,7 @@ export default function App() {
         <div className="text-center mb-6"><h2 className="text-2xl font-extrabold text-slate-800">Óptica MV - Portal Clínico</h2><p className="text-xs text-slate-500 mt-1">Acceso Seguro Administrado</p></div>
         {errorLogin && <div className="bg-rose-50 border-l-4 border-rose-600 text-rose-800 p-3 rounded text-xs mb-4 font-medium">{errorLogin}</div>}
         <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-slate-600 block mb-1">CUENTA ASIGNADA</label>
-            {/* Placeholder actualizado mostrando mayúsculas intuitivas para los operadores */}
-            <input type="text" required value={usuario} onChange={(e)=>setUsuario(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="Magaly / Flor / Admin" />
-          </div>
+          <div><label className="text-xs font-bold text-slate-600 block mb-1">CUENTA ASIGNADA</label><input type="text" required value={usuario} onChange={(e)=>setUsuario(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="Magaly / Flor / Admin" /></div>
           <div><label className="text-xs font-bold text-slate-600 block mb-1">CONTRASEÑA</label><input type="password" required value={password} onChange={(e)=>setPassword(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="••••••••••••" /></div>
           <button type="submit" disabled={cargandoLogin} className="w-full bg-sky-600 hover:bg-sky-700 text-white p-3 rounded-lg font-bold text-sm shadow flex items-center justify-center transition-all disabled:opacity-50">{cargandoLogin ? <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span> : 'Iniciar Sesión'}</button>
         </form>
@@ -357,6 +357,7 @@ export default function App() {
                         <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end border-t md:border-t-0 pt-2 md:pt-0 gap-2">
                           <div className="flex items-center space-x-3">
                             <span className="text-xs font-extrabold text-slate-800">Total: S/ {ord.total}</span>
+                            {/* Solo Admin/Magaly visualizan el botón de purgado */}
                             {rolActual === 'admin' && (
                               <button 
                                 onClick={(e) => eliminarOrdenRegistro(e, ord.id, ord.numeroOrden)}
@@ -424,21 +425,12 @@ export default function App() {
         )}
       </main>
 
-      {/* FOOTER CORPORATIVO FINAL CON DIRECCIÓN Y FIRMA */}
       <footer className="w-full bg-slate-900 text-slate-500 text-center py-6 mt-12 border-t border-slate-800">
         <div className="max-w-7xl mx-auto px-4 space-y-1.5">
-          <p className="text-xs font-bold text-slate-300 tracking-wide">
-            Óptica MV
-          </p>
-          <p className="text-xs text-slate-400">
-            📍 <span className="text-slate-300">Jr Huancavelica 319 - Lima</span>
-          </p>
-          <p className="text-[11px] text-slate-600 pt-2 border-t border-slate-800/80 max-w-xs mx-auto">
-            © 2026 Todos los derechos reservados.
-          </p>
-          <p className="text-[11px] font-bold text-slate-400">
-            Desarrollado por <span className="text-sky-500">Jonathan Saldaña</span>
-          </p>
+          <p className="text-xs font-bold text-slate-300 tracking-wide">Óptica MV</p>
+          <p className="text-xs text-slate-400">📍 <span className="text-slate-300">Jr Huancavelica 319 - Lima</span></p>
+          <p className="text-[11px] text-slate-600 pt-2 border-t border-slate-800/80 max-w-xs mx-auto">© 2026 Todos los derechos reservados.</p>
+          <p className="text-[11px] font-bold text-slate-400">Desarrollado por <span className="text-sky-500">Jonathan Saldaña</span></p>
         </div>
       </footer>
     </div>
