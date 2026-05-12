@@ -49,7 +49,6 @@ const key = process.env.COSMOS_KEY || "";
 const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new cosmos_1.CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
-// Catálogo Multi-Usuario interno estandarizado en minúsculas
 const USUARIOS_AUTORIZADOS = {
     "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal", role: "admin" },
     "magaly": { pass: "MagalyPrd2026*", nombre: "Magaly", role: "admin" },
@@ -57,9 +56,8 @@ const USUARIOS_AUTORIZADOS = {
 };
 const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const path = ((_a = context.bindingData) === null || _a === void 0 ? void 0 : _a.path) || ((_b = req.params) === null || _b === void 0 ? void 0 : _b.path);
-        // 1. ENDPOINT: AUTENTICACIÓN FLEXIBLE
         if (path === "login" && req.method === "POST") {
             try {
                 const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
@@ -71,180 +69,118 @@ const httpTrigger = function (context, req) {
                     context.res = { status: 200, body: { token, usuario: userMeta.nombre, role: userMeta.role }, headers: { "Content-Type": "application/json" } };
                     return;
                 }
-                context.res = { status: 401, body: { error: "Credenciales de acceso incorrectas" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 401, body: { error: "Credenciales incorrectas" } };
             }
             catch (err) {
-                context.res = { status: 500, body: { error: "Fallo del servidor en autenticación" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 500, body: { error: "Error login" } };
             }
             return;
         }
-        // MIDDLEWARE DE AUTORIZACIÓN
         const authHeader = ((_e = req.headers) === null || _e === void 0 ? void 0 : _e['x-optica-auth']) || ((_f = req.headers) === null || _f === void 0 ? void 0 : _f.authorization);
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            context.res = { status: 401, body: { error: "Sesión denegada. Token ausente o inválido." }, headers: { "Content-Type": "application/json" } };
+            context.res = { status: 401, body: { error: "No autorizado" } };
             return;
         }
-        let sesionActual;
+        let sesion;
         try {
-            sesionActual = jwt.verify(authHeader.split(" ")[1], JWT_SECRET_CORE);
+            sesion = jwt.verify(authHeader.split(" ")[1], JWT_SECRET_CORE);
         }
         catch (err) {
-            context.res = { status: 401, body: { error: `Firma rechazada: ${err.message}` }, headers: { "Content-Type": "application/json" } };
+            context.res = { status: 401, body: { error: "Token inválido" } };
             return;
         }
-        // =========================================================================
-        // 2. ENDPOINT: DIRECTORIO GLOBAL (Sin ORDER BY SQL para eludir bloqueos de índices)
-        // =========================================================================
         if (path === "clientes" && req.method === "GET") {
             try {
-                const { resources: clientesRaw } = yield container.items
-                    .query("SELECT c.dni, c.nombres, c.telefono, c.direccion FROM c WHERE c.tipo = 'cliente'")
-                    .fetchAll();
-                // Ordenamiento alfabético garantizado nativamente en RAM
-                const clientes = (clientesRaw || []).sort((a, b) => (a.nombres || "").localeCompare(b.nombres || ""));
-                context.res = { status: 200, body: { clientes }, headers: { "Content-Type": "application/json" } };
+                const { resources: raw } = yield container.items.query("SELECT * FROM c WHERE c.tipo = 'cliente'").fetchAll();
+                const clientes = raw.sort((a, b) => (a.nombres || "").localeCompare(b.nombres || ""));
+                context.res = { status: 200, body: { clientes } };
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: `Error recuperando directorio: ${e.message}` }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 500, body: { error: e.message } };
                 return;
             }
         }
-        // =========================================================================
-        // 3. ENDPOINT: CONSULTA DE EXPEDIENTE (Ordenamiento cronológico en RAM)
-        // =========================================================================
         if (path === "cliente" && req.method === "GET") {
-            const dni = (_h = (_g = req.query) === null || _g === void 0 ? void 0 : _g.dni) === null || _h === void 0 ? void 0 : _h.trim();
-            if (!dni) {
-                context.res = { status: 400, body: { error: "DNI requerido" }, headers: { "Content-Type": "application/json" } };
-                return;
-            }
+            const dni = (_g = req.query) === null || _g === void 0 ? void 0 : _g.dni;
             try {
                 const { resource: cliente } = yield container.item(`cli_${dni}`, "cliente").read();
-                const { resources: ordenesRaw } = yield container.items
-                    .query({
-                    query: "SELECT * FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cliId",
-                    parameters: [{ name: "@cliId", value: `cli_${dni}` }]
-                }).fetchAll();
-                // Ordenamos por fecha descendente en memoria RAM
-                const ordenes = (ordenesRaw || []).sort((a, b) => new Date(b.fechaOrden || 0).getTime() - new Date(a.fechaOrden || 0).getTime());
-                context.res = { status: 200, body: { cliente: cliente || null, ordenes }, headers: { "Content-Type": "application/json" } };
+                const { resources: ordRaw } = yield container.items.query({ query: "SELECT * FROM c WHERE c.tipo = 'orden' AND c.clienteId = @id", parameters: [{ name: "@id", value: `cli_${dni}` }] }).fetchAll();
+                const ordenes = ordRaw.sort((a, b) => new Date(b.fechaOrden).getTime() - new Date(a.fechaOrden).getTime());
+                context.res = { status: 200, body: { cliente, ordenes } };
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: `Error consultando BD: ${e.message}` }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 500, body: { error: e.message } };
                 return;
             }
         }
-        // 4. ENDPOINT: REGISTRO DE VENTA
         if (path === "venta" && req.method === "POST") {
             try {
-                const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-                if (!payload.dni || !payload.nombres) {
-                    context.res = { status: 400, body: { error: "Datos primarios obligatorios" }, headers: { "Content-Type": "application/json" } };
-                    return;
-                }
-                const timestamp = new Date().toISOString();
-                const clienteObj = { id: `cli_${payload.dni}`, tipo: "cliente", dni: payload.dni, nombres: payload.nombres, direccion: payload.direccion || "", telefono: payload.telefono || "", fechaRegistro: timestamp };
-                yield container.items.upsert(clienteObj);
-                const numeroOrden = `ORD-${Date.now().toString().slice(-6)}`;
-                const ordenObj = {
-                    id: `ord_${numeroOrden}`, tipo: "orden", numeroOrden, fechaOrden: timestamp, clienteId: `cli_${payload.dni}`,
-                    montura: payload.montura || "", tipoTrabajo: payload.tipoTrabajo || "", tratado: payload.tratado || "",
-                    refraccion: payload.refraccion || null, aCuenta: Number(payload.aCuenta || 0), saldo: Number(payload.saldo || 0),
-                    total: Number(payload.total || 0), fechaEntrega: payload.fechaEntrega || "", vendedor: sesionActual.nombre || "Especialista"
-                };
-                yield container.items.create(ordenObj);
-                context.res = { status: 201, body: { mensaje: "Transacción guardada con éxito", numeroOrden, cliente: clienteObj }, headers: { "Content-Type": "application/json" } };
+                const p = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+                const ts = new Date().toISOString();
+                yield container.items.upsert({ id: `cli_${p.dni}`, tipo: "cliente", dni: p.dni, nombres: p.nombres, direccion: p.direccion, telefono: p.telefono, fechaRegistro: ts });
+                const num = `ORD-${Date.now().toString().slice(-6)}`;
+                yield container.items.create({ id: `ord_${num}`, tipo: "orden", numeroOrden: num, fechaOrden: ts, clienteId: `cli_${p.dni}`, montura: p.montura, tipoTrabajo: p.tipoTrabajo, tratado: p.tratado, refraccion: p.refraccion, aCuenta: Number(p.aCuenta), saldo: Number(p.saldo), total: Number(p.total), fechaEntrega: p.fechaEntrega, vendedor: sesion.nombre });
+                context.res = { status: 201, body: { numeroOrden: num } };
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: "Error de escritura en Cosmos DB" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 500, body: { error: e.message } };
                 return;
             }
         }
-        // =========================================================================
-        // 5. ENDPOINT: BORRADO INTELIGENTE EN CASCADA
-        // =========================================================================
+        // ELIMINACIÓN REFORZADA: Soporta borrar una Orden o borrar un Cliente Completo
         if (path === "venta" && req.method === "DELETE") {
-            if (sesionActual.role !== "admin") {
-                context.res = { status: 403, body: { error: "Operación denegada: Requiere privilegios de administrador." }, headers: { "Content-Type": "application/json" } };
+            if (sesion.role !== "admin") {
+                context.res = { status: 403, body: { error: "Sin permisos" } };
                 return;
             }
-            const idOrden = (_k = (_j = req.query) === null || _j === void 0 ? void 0 : _j.id) === null || _k === void 0 ? void 0 : _k.trim();
-            if (!idOrden) {
-                context.res = { status: 400, body: { error: "ID de orden requerido" }, headers: { "Content-Type": "application/json" } };
-                return;
-            }
+            const id = (_h = req.query) === null || _h === void 0 ? void 0 : _h.id; // Puede ser ord_... o cli_...
             try {
-                const { resource: ordenDoc } = yield container.item(idOrden, "orden").read();
-                if (!ordenDoc) {
-                    context.res = { status: 404, body: { error: "Orden no localizada en la base de datos." }, headers: { "Content-Type": "application/json" } };
-                    return;
+                if (id.startsWith("ord_")) {
+                    const { resource: doc } = yield container.item(id, "orden").read();
+                    yield container.item(id, "orden").delete();
+                    // Si era la última orden, borramos al cliente también
+                    const { resources: restantes } = yield container.items.query({ query: "SELECT * FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cid", parameters: [{ name: "@id", value: doc.clienteId }] }).fetchAll();
+                    if (restantes.length === 0)
+                        yield container.item(doc.clienteId, "cliente").delete().catch(() => { });
                 }
-                const clienteId = ordenDoc.clienteId;
-                // 1. Purgamos la orden específica
-                yield container.item(idOrden, "orden").delete().catch(() => { });
-                // 2. Verificamos si al cliente le quedan historiales activos
-                if (clienteId) {
-                    const { resources: ordenesRestantes } = yield container.items.query({
-                        query: "SELECT * FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cliId",
-                        parameters: [{ name: "@cliId", value: clienteId }]
-                    }).fetchAll();
-                    // Si ya no le quedan órdenes, purgar el perfil principal para limpiar el Directorio Global
-                    if (!ordenesRestantes || ordenesRestantes.length === 0) {
-                        yield container.item(clienteId, "cliente").delete().catch(() => { });
+                else if (id.startsWith("cli_")) {
+                    // BORRADO TOTAL POR DNI (NUKE)
+                    const { resources: ordenes } = yield container.items.query({ query: "SELECT c.id FROM c WHERE c.tipo = 'orden' AND c.clienteId = @id", parameters: [{ name: "@id", value: id }] }).fetchAll();
+                    for (const o of ordenes) {
+                        yield container.item(o.id, "orden").delete().catch(() => { });
                     }
+                    yield container.item(id, "cliente").delete().catch(() => { });
                 }
-                context.res = { status: 200, body: { mensaje: `Orden ${idOrden} eliminada correctamente.` }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 200, body: { mensaje: "Purgado completo" } };
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: `Fallo al purgar registros: ${e.message}` }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 500, body: { error: e.message } };
                 return;
             }
         }
-        // =========================================================================
-        // 6. ENDPOINT: DASHBOARD (Cálculos analíticos 100% extraídos y agrupados en RAM)
-        // =========================================================================
         if (path === "dashboard" && req.method === "GET") {
             try {
-                // Extraemos todas las órdenes sin filtros SQL complejos
-                const { resources: todasOrdenes } = yield container.items.query("SELECT * FROM c WHERE c.tipo = 'orden'").fetchAll();
-                const ordenesValidas = todasOrdenes || [];
-                // Top Ventas: Ordenamos por fecha descendente y cortamos los 5 primeros
-                const ordenesOrdenadas = [...ordenesValidas].sort((a, b) => new Date(b.fechaOrden || 0).getTime() - new Date(a.fechaOrden || 0).getTime());
-                const topVentas = ordenesOrdenadas.slice(0, 5).map(o => ({
-                    numeroOrden: o.numeroOrden,
-                    total: Number(o.total) || 0,
-                    fechaOrden: o.fechaOrden
-                }));
-                // Top Clientes: Agrupamos ocurrencias en un mapa temporal
-                const conteoClientes = {};
-                ordenesValidas.forEach(o => {
-                    if (o.clienteId)
-                        conteoClientes[o.clienteId] = (conteoClientes[o.clienteId] || 0) + 1;
-                });
-                // Ordenamos clientes por cantidad de compras
-                const clientesOrdenados = Object.entries(conteoClientes).sort((a, b) => b[1] - a[1]).slice(0, 5);
-                const topClientes = yield Promise.all(clientesOrdenados.map((_a) => __awaiter(this, [_a], void 0, function* ([cliId, count]) {
-                    try {
-                        const { resource: cli } = yield container.item(cliId, "cliente").read();
-                        return { nombres: (cli === null || cli === void 0 ? void 0 : cli.nombres) || cliId.replace('cli_', ''), cantidadComprada: count };
-                    }
-                    catch (e) {
-                        return { nombres: cliId.replace('cli_', ''), cantidadComprada: count };
-                    }
+                const { resources: ordenes } = yield container.items.query("SELECT * FROM c WHERE c.tipo = 'orden'").fetchAll();
+                const sorted = [...ordenes].sort((a, b) => new Date(b.fechaOrden).getTime() - new Date(a.fechaOrden).getTime());
+                const topVentas = sorted.slice(0, 5).map(o => ({ numeroOrden: o.numeroOrden, total: Number(o.total), fechaOrden: o.fechaOrden }));
+                const counts = {};
+                ordenes.forEach(o => counts[o.clienteId] = (counts[o.clienteId] || 0) + 1);
+                const topCli = yield Promise.all(Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map((_a) => __awaiter(this, [_a], void 0, function* ([cid, count]) {
+                    const { resource: c } = yield container.item(cid, "cliente").read();
+                    return { nombres: (c === null || c === void 0 ? void 0 : c.nombres) || cid, cantidadComprada: count };
                 })));
-                context.res = { status: 200, body: { topVentas, topClientes }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 200, body: { topVentas, topClientes: topCli } };
                 return;
             }
-            catch (error) {
-                context.res = { status: 500, body: { error: `Fallo analítico: ${error.message}` }, headers: { "Content-Type": "application/json" } };
+            catch (e) {
+                context.res = { status: 500, body: { error: e.message } };
                 return;
             }
         }
-        context.res = { status: 404, body: { error: "Ruta no implementada" }, headers: { "Content-Type": "application/json" } };
     });
 };
 exports.default = httpTrigger;
