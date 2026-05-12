@@ -9,11 +9,11 @@ const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
 
-// Catálogo Multi-Usuario con Control de Roles (RBAC)
+// Catálogo Multi-Usuario con la clave de Flor actualizada a "47571420"
 const USUARIOS_AUTORIZADOS: Record<string, { pass: string, nombre: string, role: string }> = {
     "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal", role: "admin" },
     "magaly": { pass: "MagalyPrd2026*", nombre: "Magaly", role: "admin" },
-    "flor": { pass: "FlorPrd2026*", nombre: "Flor", role: "especialista" }
+    "flor": { pass: "47571420", nombre: "Flor", role: "especialista" }
 };
 
 const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
@@ -23,7 +23,6 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
     if (path === "login" && req.method === "POST") {
         try {
             const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-            // Soportamos ingreso en minúsculas para mayor robustez
             const usuarioInput = payload.usuario?.trim().toLowerCase();
             const passwordInput = payload.password?.trim();
 
@@ -88,7 +87,7 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         } catch (e) { context.res = { status: 500, body: { error: "Error consultando base de datos" }, headers: { "Content-Type": "application/json" } }; return; }
     }
 
-    // 4. ENDPOINT: REGISTRO DE VENTA (Traza al usuario activo)
+    // 4. ENDPOINT: REGISTRO DE VENTA
     if (path === "venta" && req.method === "POST") {
         try {
             const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
@@ -113,34 +112,47 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
                 saldo: Number(payload.saldo || 0),
                 total: Number(payload.total || 0), 
                 fechaEntrega: payload.fechaEntrega || "", 
-                vendedor: sesionActual.nombre || "Especialista" // Deja la firma de seguimiento exacta
+                vendedor: sesionActual.nombre || "Especialista"
             };
             await container.items.create(ordenObj);
             context.res = { status: 201, body: { mensaje: "Transacción guardada con éxito", numeroOrden, cliente: clienteObj }, headers: { "Content-Type": "application/json" } }; return;
         } catch (e) { context.res = { status: 500, body: { error: "Error de escritura en Cosmos DB" }, headers: { "Content-Type": "application/json" } }; return; }
     }
 
-    // 5. ENDPOINT: BORRADO SEGURO CON VALIDACIÓN DE ROL
+    // 5. ENDPOINT: BORRADO TOTAL EN CADENA
     if (path === "venta" && req.method === "DELETE") {
-        // Validación de seguridad estricta: Solo cuentas con rol 'admin' proceden
         if (sesionActual.role !== "admin") {
-            context.res = { 
-                status: 403, 
-                body: { error: "Operación denegada: La cuenta actual no posee privilegios de administrador para eliminar registros." }, 
-                headers: { "Content-Type": "application/json" } 
-            }; 
+            context.res = { status: 403, body: { error: "Operación denegada: Requiere privilegios de administrador." }, headers: { "Content-Type": "application/json" } }; 
             return;
         }
 
         const idOrden = req.query?.id?.trim();
-        const partitionKey = req.query?.pk?.trim();
         if (!idOrden) { context.res = { status: 400, body: { error: "ID de orden requerido" }, headers: { "Content-Type": "application/json" } }; return; }
         
         try {
-            await container.item(idOrden, partitionKey || "orden").delete();
-            context.res = { status: 200, body: { mensaje: "Registro eliminado permanentemente" }, headers: { "Content-Type": "application/json" } }; return;
+            const { resource: ordenDoc } = await container.item(idOrden, "orden").read();
+            
+            if (!ordenDoc || !ordenDoc.clienteId) {
+                context.res = { status: 404, body: { error: "Orden no localizada o sin cliente asociado." }, headers: { "Content-Type": "application/json" } };
+                return;
+            }
+
+            const clienteId = ordenDoc.clienteId;
+
+            // Purgar documento de orden
+            await container.item(idOrden, "orden").delete();
+
+            // Purgar documento de cliente del directorio global
+            await container.item(clienteId, "cliente").delete();
+
+            context.res = { 
+                status: 200, 
+                body: { mensaje: `Registro de orden ${idOrden} y expediente de paciente ${clienteId} eliminados permanentemente.` }, 
+                headers: { "Content-Type": "application/json" } 
+            }; 
+            return;
         } catch (e) { 
-            context.res = { status: 500, body: { error: "Fallo al purgar el documento en Cosmos DB" }, headers: { "Content-Type": "application/json" } }; return; 
+            context.res = { status: 500, body: { error: `Fallo crítico al purgar documentos en Cosmos DB: ${e.message}` }, headers: { "Content-Type": "application/json" } }; return; 
         }
     }
 

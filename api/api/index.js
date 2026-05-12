@@ -49,21 +49,20 @@ const key = process.env.COSMOS_KEY || "";
 const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new cosmos_1.CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
-// Catálogo Multi-Usuario con Control de Roles (RBAC)
+// Catálogo Multi-Usuario con la clave de Flor actualizada a "47571420"
 const USUARIOS_AUTORIZADOS = {
     "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal", role: "admin" },
     "magaly": { pass: "MagalyPrd2026*", nombre: "Magaly", role: "admin" },
-    "flor": { pass: "FlorPrd2026*", nombre: "Flor", role: "especialista" }
+    "flor": { pass: "47571420", nombre: "Flor", role: "especialista" }
 };
 const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const path = ((_a = context.bindingData) === null || _a === void 0 ? void 0 : _a.path) || ((_b = req.params) === null || _b === void 0 ? void 0 : _b.path);
         // 1. ENDPOINT: AUTENTICACIÓN
         if (path === "login" && req.method === "POST") {
             try {
                 const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-                // Soportamos ingreso en minúsculas para mayor robustez
                 const usuarioInput = (_c = payload.usuario) === null || _c === void 0 ? void 0 : _c.trim().toLowerCase();
                 const passwordInput = (_d = payload.password) === null || _d === void 0 ? void 0 : _d.trim();
                 const userMeta = USUARIOS_AUTORIZADOS[usuarioInput];
@@ -133,7 +132,7 @@ const httpTrigger = function (context, req) {
                 return;
             }
         }
-        // 4. ENDPOINT: REGISTRO DE VENTA (Traza al usuario activo)
+        // 4. ENDPOINT: REGISTRO DE VENTA
         if (path === "venta" && req.method === "POST") {
             try {
                 const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
@@ -159,7 +158,7 @@ const httpTrigger = function (context, req) {
                     saldo: Number(payload.saldo || 0),
                     total: Number(payload.total || 0),
                     fechaEntrega: payload.fechaEntrega || "",
-                    vendedor: sesionActual.nombre || "Especialista" // Deja la firma de seguimiento exacta
+                    vendedor: sesionActual.nombre || "Especialista"
                 };
                 yield container.items.create(ordenObj);
                 context.res = { status: 201, body: { mensaje: "Transacción guardada con éxito", numeroOrden, cliente: clienteObj }, headers: { "Content-Type": "application/json" } };
@@ -170,30 +169,37 @@ const httpTrigger = function (context, req) {
                 return;
             }
         }
-        // 5. ENDPOINT: BORRADO SEGURO CON VALIDACIÓN DE ROL
+        // 5. ENDPOINT: BORRADO TOTAL EN CADENA
         if (path === "venta" && req.method === "DELETE") {
-            // Validación de seguridad estricta: Solo cuentas con rol 'admin' proceden
             if (sesionActual.role !== "admin") {
-                context.res = {
-                    status: 403,
-                    body: { error: "Operación denegada: La cuenta actual no posee privilegios de administrador para eliminar registros." },
-                    headers: { "Content-Type": "application/json" }
-                };
+                context.res = { status: 403, body: { error: "Operación denegada: Requiere privilegios de administrador." }, headers: { "Content-Type": "application/json" } };
                 return;
             }
             const idOrden = (_k = (_j = req.query) === null || _j === void 0 ? void 0 : _j.id) === null || _k === void 0 ? void 0 : _k.trim();
-            const partitionKey = (_m = (_l = req.query) === null || _l === void 0 ? void 0 : _l.pk) === null || _m === void 0 ? void 0 : _m.trim();
             if (!idOrden) {
                 context.res = { status: 400, body: { error: "ID de orden requerido" }, headers: { "Content-Type": "application/json" } };
                 return;
             }
             try {
-                yield container.item(idOrden, partitionKey || "orden").delete();
-                context.res = { status: 200, body: { mensaje: "Registro eliminado permanentemente" }, headers: { "Content-Type": "application/json" } };
+                const { resource: ordenDoc } = yield container.item(idOrden, "orden").read();
+                if (!ordenDoc || !ordenDoc.clienteId) {
+                    context.res = { status: 404, body: { error: "Orden no localizada o sin cliente asociado." }, headers: { "Content-Type": "application/json" } };
+                    return;
+                }
+                const clienteId = ordenDoc.clienteId;
+                // Purgar documento de orden
+                yield container.item(idOrden, "orden").delete();
+                // Purgar documento de cliente del directorio global
+                yield container.item(clienteId, "cliente").delete();
+                context.res = {
+                    status: 200,
+                    body: { mensaje: `Registro de orden ${idOrden} y expediente de paciente ${clienteId} eliminados permanentemente.` },
+                    headers: { "Content-Type": "application/json" }
+                };
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: "Fallo al purgar el documento en Cosmos DB" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 500, body: { error: `Fallo crítico al purgar documentos en Cosmos DB: ${e.message}` }, headers: { "Content-Type": "application/json" } };
                 return;
             }
         }
