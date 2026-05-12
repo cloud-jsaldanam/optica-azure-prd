@@ -5,6 +5,7 @@ import { Bar } from 'react-chartjs-2';
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 export default function App() {
+  // Autenticación
   const [token, setToken] = useState(localStorage.getItem('jwt_optica') || '');
   const [operadorActual, setOperadorActual] = useState(localStorage.getItem('user_optica') || 'Especialista');
   const [rolActual, setRolActual] = useState(localStorage.getItem('role_optica') || '');
@@ -13,22 +14,44 @@ export default function App() {
   const [errorLogin, setErrorLogin] = useState('');
   const [cargandoLogin, setCargandoLogin] = useState(false);
 
+  // Navegación
   const [tabActiva, setTabActiva] = useState('registro');
   const [tabGraficoSecundario, setTabGraficoSecundario] = useState('mensual');
 
+  // Gráficas
   const [dataTopVentas, setDataTopVentas] = useState(null);
   const [dataMensual, setDataMensual] = useState(null);
   const [dataDiaria, setDataDiaria] = useState(null);
 
-  // Formulario Clínico
-  const [dni, setDni] = useState(''); const [nombres, setNombres] = useState(''); const [direccion, setDireccion] = useState(''); const [telefono, setTelefono] = useState(''); const [total, setTotal] = useState(''); const [aCuenta, setACuenta] = useState(''); const [montura, setMontura] = useState(''); const [tipoTrabajo, setTipoTrabajo] = useState(''); const [tratado, setTratado] = useState(''); const [fechaEntrega, setFechaEntrega] = useState(''); const [od, setOd] = useState({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); const [oi, setOi] = useState({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); const [cercaAdd, setCercaAdd] = useState(''); const [cargandoVenta, setCargandoVenta] = useState(false);
+  // Formulario Clínico (Módulo 1)
+  const [dni, setDni] = useState('');
+  const [nombres, setNombres] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [total, setTotal] = useState('');
+  const [aCuenta, setACuenta] = useState('');
+  const [montura, setMontura] = useState('');
+  const [tipoTrabajo, setTipoTrabajo] = useState('');
+  const [tratado, setTratado] = useState('');
+  const [fechaEntrega, setFechaEntrega] = useState('');
+  const [od, setOd] = useState({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' });
+  const [oi, setOi] = useState({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' });
+  const [cercaAdd, setCercaAdd] = useState('');
+  const [cargandoVenta, setCargandoVenta] = useState(false);
 
-  // Directorio
+  // =========================================================================
+  // CORRECCIÓN CRÍTICA: Declaración de variables de carga para evitar ReferenceError
+  // =========================================================================
   const [listaDirectorio, setListaDirectorio] = useState([]);
+  const [cargandoDirectorio, setCargandoDirectorio] = useState(false);
   const [busquedaDni, setBusquedaDni] = useState('');
   const [clienteEncontrado, setClienteEncontrado] = useState(null);
   const [ordenesCliente, setOrdenesCliente] = useState([]);
+  const [cargandoBusqueda, setCargandoBusqueda] = useState(false);
+  const [estadoBusqueda, setEstadoBusqueda] = useState('');
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
+
+  // Alertas
   const [mensajeExito, setMensajeExito] = useState('');
   const [errorForm, setErrorForm] = useState('');
 
@@ -41,47 +64,36 @@ export default function App() {
     return res;
   };
 
-  // =========================================================================
-  // BLINDAJE ANALÍTICO: Evitamos caídas de pantalla validando cadenas nulas
-  // =========================================================================
   const cargarDashboard = async () => {
     try {
       const res = await fetchSeguro('/api/dashboard');
       if (res.ok) {
         const d = await res.json();
-        
         if (d.topVentas && d.topVentas.length > 0) {
-          setDataTopVentas({ 
-            labels: d.topVentas.map(v => v.label || 'Sin Label'), 
-            datasets: [{ label: 'S/', data: d.topVentas.map(v => Number(v.total) || 0), backgroundColor: '#0284c7' }] 
-          });
+          setDataTopVentas({ labels: d.topVentas.map(v => v.label || 'Venta'), datasets: [{ label: 'S/', data: d.topVentas.map(v => Number(v.total) || 0), backgroundColor: '#0284c7' }] });
         } else { setDataTopVentas(null); }
         
         if (d.analiticaMensual && d.analiticaMensual.length > 0) {
-          setDataMensual({ 
-            labels: d.analiticaMensual.map(m => m.mes || 'Mes'), 
-            datasets: [{ label: 'Ventas Totales (S/)', data: d.analiticaMensual.map(m => Number(m.total) || 0), backgroundColor: '#059669' }] 
-          });
+          setDataMensual({ labels: d.analiticaMensual.map(m => m.mes || 'Mes'), datasets: [{ label: 'Ventas Totales (S/)', data: d.analiticaMensual.map(m => Number(m.total) || 0), backgroundColor: '#059669' }] });
         } else { setDataMensual(null); }
 
         if (d.analiticaDiaria && d.analiticaDiaria.length > 0) {
-          setDataDiaria({ 
-            labels: d.analiticaDiaria.map(d => d.dia || 'Día'), 
-            datasets: [{ label: 'Cantidad Órdenes', data: d.analiticaDiaria.map(d => Number(d.cantidad) || 0), backgroundColor: '#f97316' }] 
-          });
+          setDataDiaria({ labels: d.analiticaDiaria.map(d => d.dia || 'Día'), datasets: [{ label: 'Cantidad Órdenes', data: d.analiticaDiaria.map(d => Number(d.cantidad) || 0), backgroundColor: '#f97316' }] });
         } else { setDataDiaria(null); }
       }
-    } catch (e) { console.error("Error cargando métricas:", e); }
+    } catch (e) { console.error(e); }
   };
 
   const cargarDirectorio = async () => {
+    setCargandoDirectorio(true);
     try {
       const res = await fetchSeguro('/api/clientes');
       if (res.ok) {
         const data = await res.json();
         setListaDirectorio(data.clientes || []);
       }
-    } catch (e) {}
+    } catch (e) {} 
+    finally { setCargandoDirectorio(false); }
   };
 
   useEffect(() => { if (token) { cargarDashboard(); cargarDirectorio(); } }, [token, tabActiva]);
@@ -113,16 +125,18 @@ export default function App() {
 
   const consultarExpediente = async (targetDni) => {
     if (!targetDni) return;
-    setErrorForm(''); setMensajeExito(''); setEstadoBusqueda('Consultando...'); setClienteEncontrado(null); setOrdenesCliente([]);
+    setErrorForm(''); setMensajeExito(''); setEstadoBusqueda('Consultando base de datos...'); setClienteEncontrado(null); setOrdenesCliente([]);
+    setCargandoBusqueda(true);
     try {
       const res = await fetchSeguro(`/api/cliente?dni=${targetDni.trim()}`);
       if (res.ok) {
         const data = await res.json();
         if (data.cliente || (data.ordenes && data.ordenes.length > 0)) {
           setClienteEncontrado(data.cliente); setOrdenesCliente(data.ordenes || []); setEstadoBusqueda('');
-        } else { setEstadoBusqueda('No se encontraron historiales.'); }
-      }
-    } catch(e) { setEstadoBusqueda('Error de consulta.'); }
+        } else { setEstadoBusqueda('No se encontraron historiales para este documento.'); }
+      } else { setEstadoBusqueda('No se localizó el expediente.'); }
+    } catch(e) { setEstadoBusqueda('Error de consulta.'); } 
+    finally { setCargandoBusqueda(false); }
   };
 
   const registrarVenta = async (e) => {
@@ -198,9 +212,10 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex bg-white rounded-xl p-1 border shadow-sm mb-4">
-          <button onClick={()=>setTabActiva('registro')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${tabActiva==='registro'?'bg-sky-600 text-white':'text-slate-400'}`}>Módulo 1: Registrar Venta</button>
-          <button onClick={()=>setTabActiva('historial')} className={`flex-1 py-2 rounded-lg font-bold text-sm ${tabActiva==='historial'?'bg-sky-600 text-white':'text-slate-400'}`}>Módulo 2: Auditoría</button>
+        {/* Pestañas Modulares rediseñadas con estilo visual ultra-intuitivo */}
+        <div className="flex bg-slate-200 p-1.5 rounded-xl border shadow-inner mb-6 max-w-md mx-auto">
+          <button onClick={() => {setTabActiva('registro'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'registro' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📋 Módulo 1: Registrar Venta</button>
+          <button onClick={() => {setTabActiva('historial'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'historial' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>🔍 Módulo 2: Auditoría</button>
         </div>
 
         {mensajeExito && <div className="bg-emerald-500 text-white p-3 rounded-xl text-center font-bold text-sm animate-fade-in">{mensajeExito}</div>}
@@ -255,18 +270,21 @@ export default function App() {
           </form>
         )}
 
+        {/* MÓDULO 2: AUDITORÍA CLÍNICA DE HISTORIALES */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm sticky top-24 self-start space-y-4">
               <div className="border-b pb-3">
                 <h3 className="text-xs font-extrabold text-slate-700 mb-2">DIRECTORIO GLOBAL</h3>
-                <button onClick={cargarDirectorio} className="w-full bg-slate-100 hover:bg-sky-50 text-sky-700 border border-slate-200 font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center transition-all shadow-sm">🔄 Sincronizar Directorio</button>
+                <button onClick={cargarDirectorio} disabled={cargandoDirectorio} className="w-full bg-slate-100 hover:bg-sky-50 text-sky-700 border border-slate-200 font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center transition-all shadow-sm disabled:opacity-50">
+                  {cargandoDirectorio ? '🔄 Sincronizando...' : '🔄 Sincronizar Directorio'}
+                </button>
               </div>
               <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                {listaDirectorio.map(c => (
-                  <div key={c.dni} onClick={()=> {setBusquedaDni(c.dni); consultarExpediente(c.dni);}} className={`p-3 rounded-xl hover:bg-sky-50 cursor-pointer flex justify-between items-center group transition-colors ${busquedaDni===c.dni?'bg-sky-50 border-l-4 border-sky-600': 'bg-slate-50'}`}>
-                    <div><p className="text-xs font-bold text-slate-800">{c.nombres}</p><p className="text-[10px] text-slate-500">{c.dni}</p></div>
-                    {rolActual === 'admin' && <button onClick={e=>purgarClienteCompleto(e,`cli_${c.dni}`,c.nombres)} title="Purgar cliente" className="text-rose-400 hover:text-rose-600 font-bold text-base px-2 opacity-0 group-hover:opacity-100">✕</button>}
+                {(listaDirectorio || []).map(c => (
+                  <div key={c?.dni || Math.random()} onClick={()=> {setBusquedaDni(c?.dni || ''); consultarExpediente(c?.dni);}} className={`p-3 rounded-xl hover:bg-sky-50 cursor-pointer flex justify-between items-center group transition-colors ${busquedaDni===(c?.dni)?'bg-sky-50 border-l-4 border-sky-600': 'bg-slate-50'}`}>
+                    <div><p className="text-xs font-bold text-slate-800">{c?.nombres || 'Desconocido'}</p><p className="text-[10px] text-slate-500">{c?.dni || ''}</p></div>
+                    {rolActual === 'admin' && <button onClick={e=>purgarClienteCompleto(e,`cli_${c?.dni}`,c?.nombres)} title="Purgar cliente" className="text-rose-400 hover:text-rose-600 font-bold text-base px-2 opacity-0 group-hover:opacity-100">✕</button>}
                   </div>
                 ))}
               </div>
@@ -277,33 +295,35 @@ export default function App() {
                 <label className="text-xs font-extrabold text-slate-700 block">AUDITORÍA HISTÓRICA POR DNI</label>
                 <div className="flex space-x-3">
                   <input type="text" maxLength="8" required value={busquedaDni} onChange={e=>setBusquedaDni(e.target.value)} placeholder="Número de documento..." className="flex-1 p-2.5 border rounded-lg text-sm outline-none focus:border-sky-600" />
-                  <button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all">{cargandoBusqueda ? 'Buscando...' : 'Auditar'}</button>
+                  <button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50">
+                    {cargandoBusqueda ? 'Buscando...' : 'Auditar'}
+                  </button>
                 </div>
                 {estadoBusqueda && <p className="text-xs text-slate-500 font-medium">{estadoBusqueda}</p>}
               </form>
 
               {clienteEncontrado && (
                 <div className="border-t pt-5 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border">
-                  <div><span className="text-[10px] font-bold text-slate-400 block">PACIENTE</span><p className="font-bold text-slate-800 text-sm">{clienteEncontrado.nombres}</p></div>
-                  <div><span className="text-[10px] font-bold text-slate-400 block">DOCUMENTO</span><p className="font-medium text-slate-700 text-sm">{clienteEncontrado.dni}</p></div>
-                  <div><span className="text-[10px] font-bold text-slate-400 block">CONTACTO</span><p className="text-xs text-slate-600">{clienteEncontrado.telefono || 'Sin registro'}</p></div>
+                  <div><span className="text-[10px] font-bold text-slate-400 block">PACIENTE</span><p className="font-bold text-slate-800 text-sm">{clienteEncontrado?.nombres || ''}</p></div>
+                  <div><span className="text-[10px] font-bold text-slate-400 block">DOCUMENTO</span><p className="font-medium text-slate-700 text-sm">{clienteEncontrado?.dni || ''}</p></div>
+                  <div><span className="text-[10px] font-bold text-slate-400 block">CONTACTO</span><p className="text-xs text-slate-600">{clienteEncontrado?.telefono || 'Sin registro'}</p></div>
                 </div>
               )}
 
               <div>
                 <h3 className="text-xs font-extrabold text-slate-700 mb-3">HISTORIAL DE ÓRDENES PREVIAS</h3>
-                {ordenesCliente.length === 0 ? <div className="text-center py-8 border-2 border-dashed rounded-xl text-slate-400 text-xs">Sin transacciones registradas.</div> : (
+                {(ordenesCliente || []).length === 0 ? <div className="text-center py-8 border-2 border-dashed rounded-xl text-slate-400 text-xs">Sin transacciones registradas.</div> : (
                   <div className="space-y-3">
-                    {ordenesCliente.map(o => (
-                      <div key={o.id} onClick={()=>setOrdenSeleccionada(o)} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md cursor-pointer flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-l-4 border-l-sky-500">
+                    {(ordenesCliente || []).map(o => (
+                      <div key={o?.id || Math.random()} onClick={()=>setOrdenSeleccionada(o)} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md cursor-pointer flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-l-4 border-l-sky-500 transition-all">
                         <div className="space-y-1">
-                          <div className="flex items-center space-x-2"><span className="bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded text-[10px]">{o.numeroOrden}</span><span className="text-xs text-slate-400">{new Date(o.fechaOrden).toLocaleDateString()}</span></div>
-                          <p className="text-xs font-bold text-slate-800">{o.montura || 'Servicio'} • <span className="text-slate-600 font-normal">{o.tipoTrabajo}</span></p>
-                          <span className="text-[10px] text-slate-400 block">Atendido por: <strong>{o.vendedor || 'Especialista'}</strong></span>
+                          <div className="flex items-center space-x-2"><span className="bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded text-[10px]">{o?.numeroOrden || 'ORD'}</span><span className="text-xs text-slate-400">{o?.fechaOrden ? new Date(o.fechaOrden).toLocaleDateString() : ''}</span></div>
+                          <p className="text-xs font-bold text-slate-800">{o?.montura || 'Servicio'} • <span className="text-slate-600 font-normal">{o?.tipoTrabajo || ''}</span></p>
+                          <span className="text-[10px] text-slate-400 block">Atendido por: <strong className="text-slate-600">{o?.vendedor || 'Especialista'}</strong></span>
                         </div>
-                        <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end gap-2">
-                          <div className="flex items-center space-x-3"><span className="text-xs font-extrabold">Total: S/ {o.total}</span>{rolActual==='admin' && <button onClick={e=>eliminarOrdenRegistro(e,o.id,o.numeroOrden)} className="text-[10px] text-rose-500 border border-rose-200 px-2 py-0.5 rounded font-bold hover:bg-rose-50">Eliminar</button>}</div>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${o.saldo>0?'bg-rose-50 text-rose-700':'bg-emerald-50 text-emerald-700'}`}>{o.saldo>0?`Saldo: S/ ${o.saldo}`:'Liquidado'}</span>
+                        <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end gap-2 border-t md:border-t-0 pt-2 md:pt-0">
+                          <div className="flex items-center space-x-3"><span className="text-xs font-extrabold text-slate-800">Total: S/ {o?.total || 0}</span>{rolActual==='admin' && <button onClick={e=>eliminarOrdenRegistro(e,o?.id,o?.numeroOrden)} className="text-[10px] text-rose-500 border border-rose-200 px-2 py-0.5 rounded font-bold hover:bg-rose-50 transition-colors">Eliminar</button>}</div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${Number(o?.saldo)>0?'bg-rose-50 text-rose-700 border border-rose-100':'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>{Number(o?.saldo)>0?`Saldo: S/ ${o.saldo}`:'Liquidado'}</span>
                         </div>
                       </div>
                     ))}
@@ -314,30 +334,31 @@ export default function App() {
           </div>
         )}
 
+        {/* MODAL DETALLADO DE RECETA DE ARCHIVO */}
         {ordenSeleccionada && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border flex flex-col max-h-[90vh]">
-              <div className="bg-slate-800 text-white p-4 flex justify-between items-center"><div><span className="text-[10px] bg-sky-500 text-white font-bold px-2 py-0.5 rounded uppercase">Receta de Archivo</span><h3 className="font-extrabold text-base mt-0.5">Expediente: {ordenSeleccionada.numeroOrden}</h3></div><button onClick={()=>setOrdenSeleccionada(null)} className="text-slate-400 font-bold text-lg px-2">&times;</button></div>
+              <div className="bg-slate-800 text-white p-4 flex justify-between items-center"><div><span className="text-[10px] bg-sky-500 text-white font-bold px-2 py-0.5 rounded uppercase">Receta de Archivo</span><h3 className="font-extrabold text-base mt-0.5">Expediente: {ordenSeleccionada?.numeroOrden || ''}</h3></div><button onClick={()=>setOrdenSeleccionada(null)} className="text-slate-400 hover:text-white font-bold text-lg px-2">&times;</button></div>
               <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-4 border-b text-xs"><div><span className="text-slate-400 block font-bold text-[10px]">REGISTRO</span><p className="font-bold">{new Date(ordenSeleccionada.fechaOrden).toLocaleString()}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">ATENDIÓ</span><p className="font-bold text-sky-700">{ordenSeleccionada.vendedor || 'N/A'}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">ENTREGA</span><p className="font-bold">{ordenSeleccionada.fechaEntrega || 'Inmediata'}</p></div></div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-4 border-b text-xs"><div><span className="text-slate-400 block font-bold text-[10px]">REGISTRO</span><p className="font-bold text-slate-700">{ordenSeleccionada?.fechaOrden ? new Date(ordenSeleccionada.fechaOrden).toLocaleString() : ''}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">ATENDIÓ</span><p className="font-bold text-sky-700">{ordenSeleccionada?.vendedor || 'N/A'}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">ENTREGA</span><p className="font-bold text-slate-700">{ordenSeleccionada?.fechaEntrega || 'Inmediata'}</p></div></div>
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">REFRACCIÓN VISUAL</h4>
                   <table className="w-full text-left border-collapse">
-                    <thead><tr className="bg-slate-100 text-[10px] font-bold border-b"><th className="p-2">OJO</th><th className="p-2">R.P.</th><th className="p-2">ESF</th><th className="p-2">CIL.</th><th className="p-2">EJE</th><th className="p-2">DIP</th><th className="p-2">ALT</th></tr></thead>
-                    <tbody className="text-xs divide-y">
-                      <tr><td className="p-2 font-bold text-sky-700">O.D.</td><td className="p-2">{ordenSeleccionada.refraccion?.od?.rp||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada.refraccion?.od?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada.refraccion?.od?.cil||'-'}</td><td className="p-2">{ordenSeleccionada.refraccion?.od?.eje||'-'}</td><td className="p-2">{ordenSeleccionada.refraccion?.od?.dip||'-'}</td><td className="p-2">{ordenSeleccionada.refraccion?.od?.alt||'-'}</td></tr>
-                      <tr><td className="p-2 font-bold text-sky-700">O.I.</td><td className="p-2">{ordenSeleccionada.refraccion?.oi?.rp||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada.refraccion?.oi?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada.refraccion?.oi?.cil||'-'}</td><td className="p-2">{ordenSeleccionada.refraccion?.oi?.eje||'-'}</td><td className="p-2">{ordenSeleccionada.refraccion?.oi?.dip||'-'}</td><td className="p-2">{ordenSeleccionada.refraccion?.oi?.alt||'-'}</td></tr>
+                    <thead><tr className="bg-slate-100 text-slate-600 text-[10px] font-bold border-b"><th className="p-2">OJO</th><th className="p-2">R.P.</th><th className="p-2">ESF</th><th className="p-2">CIL.</th><th className="p-2">EJE</th><th className="p-2">DIP</th><th className="p-2">ALT</th></tr></thead>
+                    <tbody className="text-xs text-slate-700 divide-y">
+                      <tr><td className="p-2 font-bold text-sky-700">O.D.</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.rp||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.od?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.od?.cil||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.eje||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.dip||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.alt||'-'}</td></tr>
+                      <tr><td className="p-2 font-bold text-sky-700">O.I.</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.rp||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.oi?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.oi?.cil||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.eje||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.dip||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.alt||'-'}</td></tr>
                     </tbody>
                   </table>
-                  {ordenSeleccionada.refraccion?.cercaAdd && <p className="text-xs mt-2"><strong className="text-slate-800">CERCA ADD:</strong> {ordenSeleccionada.refraccion.cercaAdd}</p>}
+                  {ordenSeleccionada?.refraccion?.cercaAdd && <p className="text-xs mt-2 text-slate-600"><strong className="text-slate-800">CERCA ADD:</strong> {ordenSeleccionada.refraccion.cercaAdd}</p>}
                 </div>
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">PRODUCTO</h4>
-                  <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border text-xs"><div><span className="text-[10px] text-slate-400 block font-bold">MONTURA</span><p className="font-bold">{ordenSeleccionada.montura||'N/A'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TRABAJO</span><p className="font-bold">{ordenSeleccionada.tipoTrabajo||'Estándar'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TRATADO</span><p className="font-bold">{ordenSeleccionada.tratado||'N/A'}</p></div></div>
+                  <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border text-xs"><div><span className="text-[10px] text-slate-400 block font-bold">MONTURA</span><p className="font-bold text-slate-800">{ordenSeleccionada?.montura||'N/A'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TRABAJO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tipoTrabajo||'Estándar'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TRATADO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tratado||'N/A'}</p></div></div>
                 </div>
-                <div className="bg-slate-100 p-4 rounded-xl flex justify-between items-center text-sm"><div><span className="text-[10px] font-bold text-slate-500 block">CAJA</span><p className="font-extrabold">Total: S/ {ordenSeleccionada.total}</p></div><div className="text-right"><span className="text-[10px] font-bold text-slate-500 block">ESTADO</span><p className={`font-extrabold ${ordenSeleccionada.saldo>0?'text-rose-600':'text-emerald-600'}`}>{ordenSeleccionada.saldo>0?`Saldo: S/ ${ordenSeleccionada.saldo}`:'Cancelado al 100%'}</p></div></div>
+                <div className="bg-slate-100 p-4 rounded-xl flex justify-between items-center text-sm"><div><span className="text-[10px] font-bold text-slate-500 block uppercase">CAJA</span><p className="font-extrabold text-slate-800">Total: S/ {ordenSeleccionada?.total || 0}</p></div><div className="text-right"><span className="text-[10px] font-bold text-slate-500 block uppercase">ESTADO</span><p className={`font-extrabold ${Number(ordenSeleccionada?.saldo)>0?'text-rose-600':'text-emerald-600'}`}>{Number(ordenSeleccionada?.saldo)>0?`Saldo: S/ ${ordenSeleccionada.saldo}`:'Cancelado al 100%'}</p></div></div>
               </div>
-              <div className="p-4 border-t bg-slate-50 text-right"><button onClick={()=>setOrdenSeleccionada(null)} className="bg-slate-800 text-white font-bold text-xs px-5 py-2.5 rounded-lg">Cerrar</button></div>
+              <div className="p-4 border-t bg-slate-50 text-right"><button onClick={()=>setOrdenSeleccionada(null)} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-lg transition-colors">Cerrar</button></div>
             </div>
           </div>
         )}
