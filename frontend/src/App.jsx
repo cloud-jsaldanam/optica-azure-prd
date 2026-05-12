@@ -19,9 +19,7 @@ export default function App() {
   const [dataVentas, setDataVentas] = useState(null);
   const [dataClientes, setDataClientes] = useState(null);
 
-  // ==========================================
   // CAMPOS COMPLETOS DE LA ORDEN DE TRABAJO FÍSICA
-  // ==========================================
   const [dni, setDni] = useState('');
   const [nombres, setNombres] = useState('');
   const [direccion, setDireccion] = useState('');
@@ -48,17 +46,16 @@ export default function App() {
   const [cargandoBusqueda, setCargandoBusqueda] = useState(false);
   const [estadoBusqueda, setEstadoBusqueda] = useState('');
 
-  // Modal de Auditoría Visual en Profundidad
+  // Modal de Auditoría
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
 
   // Alertas visuales
   const [mensajeExito, setMensajeExito] = useState('');
   const [errorForm, setErrorForm] = useState('');
 
-  // Cálculo financiero automático
+  // Cálculo financiero
   const saldoCalculado = (Number(total) || 0) - (Number(aCuenta) || 0);
 
-  // Wrapper seguro de peticiones
   const fetchSeguro = async (endpoint, options = {}) => {
     const tokenActual = localStorage.getItem('jwt_optica') || token;
     const headers = { ...options.headers, 'x-optica-auth': `Bearer ${tokenActual}` };
@@ -78,7 +75,6 @@ export default function App() {
     return res;
   };
 
-  // Carga de Analíticas
   const cargarDashboard = async () => {
     if (!localStorage.getItem('jwt_optica')) return;
     try {
@@ -102,7 +98,6 @@ export default function App() {
     } catch (err) { console.error(err); }
   };
 
-  // Carga del Directorio Global
   const cargarDirectorioGlobal = async () => {
     if (!localStorage.getItem('jwt_optica')) return;
     setCargandoDirectorio(true);
@@ -122,7 +117,6 @@ export default function App() {
     } 
   }, [token, tabActiva]);
 
-  // Autenticación
   const handleLogin = async (e) => {
     e.preventDefault(); setErrorLogin(''); setCargandoLogin(true);
     try {
@@ -141,7 +135,6 @@ export default function App() {
     finally { setCargandoLogin(false); }
   };
 
-  // Consultar historial por DNI
   const consultarExpediente = async (targetDni) => {
     if (!targetDni) return;
     setErrorForm(''); setMensajeExito(''); setEstadoBusqueda(''); setCargandoBusqueda(true); setClienteEncontrado(null); setOrdenesCliente([]);
@@ -157,24 +150,16 @@ export default function App() {
     } catch (err) { setEstadoBusqueda(err.message); } finally { setCargandoBusqueda(false); }
   };
 
-  // Guardar Transacción Completa
+  // =========================================================================
+  // RUTINA DE VACIADO: Purga total de las cajas de texto tras guardar con éxito
+  // =========================================================================
   const registrarVenta = async (e) => {
     e.preventDefault(); setErrorForm(''); setMensajeExito(''); setCargandoVenta(true);
     if (!dni || !nombres) { setErrorForm('DNI y Nombres son obligatorios.'); setCargandoVenta(false); return; }
     
-    // Mapeo exacto de todos los campos de la interfaz al backend
     const payload = { 
-      dni: dni.trim(), 
-      nombres: nombres.trim(), 
-      direccion, 
-      telefono, 
-      montura, 
-      tipoTrabajo, 
-      tratado, 
-      fechaEntrega, 
-      aCuenta: Number(aCuenta), 
-      saldo: saldoCalculado, 
-      total: Number(total), 
+      dni: dni.trim(), nombres: nombres.trim(), direccion, telefono, montura, tipoTrabajo, tratado, fechaEntrega, 
+      aCuenta: Number(aCuenta), saldo: saldoCalculado, total: Number(total), 
       refraccion: { od, oi, cercaAdd } 
     };
 
@@ -183,20 +168,20 @@ export default function App() {
       const data = await res.json();
       if (res.ok) {
         setMensajeExito(`¡Orden ${data.numeroOrden} procesada exitosamente por ${operadorActual}!`);
-        // Reset íntegro del formulario
+        
+        // VACIADO INTEGRAL DE LAS 22 VARIABLES EN MEMORIA
+        setDni(''); setNombres(''); setDireccion(''); setTelefono('');
         setTotal(''); setACuenta(''); setMontura(''); setTipoTrabajo(''); setTratado(''); setFechaEntrega('');
         setOd({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); 
         setOi({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); 
         setCercaAdd('');
+
         cargarDashboard(); 
         cargarDirectorioGlobal();
       } else setErrorForm(data.error || 'Fallo al procesar la venta.');
     } catch (err) { setErrorForm(err.message); } finally { setCargandoVenta(false); }
   };
 
-  // =========================================================================
-  // BOTÓN NUKE: Borrado total de Cliente y todas sus órdenes desde el directorio
-  // =========================================================================
   const purgarClienteCompleto = async (e, cid, nombre) => {
     e.stopPropagation();
     if (!window.confirm(`¿BORRADO DEFINITIVO DEL PACIENTE?\n\nSe eliminará de forma permanente a "${nombre}" y la totalidad de sus órdenes de la base de datos.`)) return;
@@ -206,12 +191,9 @@ export default function App() {
       const res = await fetchSeguro(`/api/venta?id=${cid}`, { method: 'DELETE' });
       if (res.ok) {
         setMensajeExito(`Expediente de ${nombre} purgado por completo.`);
-        // Purgado inmediato en RAM visual
         setListaDirectorio(prev => prev.filter(c => `cli_${c.dni}` !== cid));
         if (clienteEncontrado && `cli_${clienteEncontrado.dni}` === cid) {
-          setClienteEncontrado(null);
-          setOrdenesCliente([]);
-          setBusquedaDni('');
+          setClienteEncontrado(null); setOrdenesCliente([]); setBusquedaDni('');
         }
         cargarDashboard();
       } else {
@@ -221,7 +203,6 @@ export default function App() {
     } catch (err) { setErrorForm(err.message); }
   };
 
-  // Borrado individual de una orden específica
   const eliminarOrdenRegistro = async (e, ordId, ordNum) => {
     e.stopPropagation(); 
     setErrorForm(''); setMensajeExito('');
@@ -243,7 +224,6 @@ export default function App() {
   const handleUpdateOd = (field, val) => setOd(prev => ({ ...prev, [field]: val }));
   const handleUpdateOi = (field, val) => setOi(prev => ({ ...prev, [field]: val }));
 
-  // Vista Login
   if (!token) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-2xl p-8 border border-slate-100">
@@ -260,7 +240,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12 flex flex-col">
-      {/* Cabecera Corporativa */}
       <header className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm sticky top-0 z-40">
         <div className="flex items-center space-x-3">
           <span className="bg-sky-600 text-white font-bold px-2.5 py-1 rounded text-xs animate-pulse">Óptica MV</span>
@@ -273,7 +252,6 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 mt-6 space-y-6 flex-grow w-full">
-        {/* Gráficas */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white p-4 rounded-xl border shadow-sm">
             <h2 className="text-xs font-bold text-slate-400 text-center mb-2 uppercase">Métricas de Ingreso (S/)</h2>
@@ -285,7 +263,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Pestañas Modulares */}
         <div className="flex border-b border-slate-200 bg-white rounded-t-xl px-4 pt-2">
           <button onClick={() => {setTabActiva('registro'); setErrorForm(''); setMensajeExito('');}} className={`py-3 px-6 font-bold text-sm border-b-2 transition-all ${tabActiva === 'registro' ? 'border-sky-600 text-sky-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Módulo 1: Registrar Venta</button>
           <button onClick={() => {setTabActiva('historial'); setErrorForm(''); setMensajeExito('');}} className={`py-3 px-6 font-bold text-sm border-b-2 transition-all ${tabActiva === 'historial' ? 'border-sky-600 text-sky-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>Módulo 2: Directorio e Historial</button>
@@ -294,12 +271,8 @@ export default function App() {
         {mensajeExito && <div className="bg-emerald-50 border-l-4 border-emerald-600 text-emerald-800 p-4 rounded-r font-medium text-sm shadow-sm animate-fade-in">{mensajeExito}</div>}
         {errorForm && <div className="bg-rose-50 border-l-4 border-rose-600 text-rose-800 p-4 rounded-r font-medium text-sm shadow-sm animate-fade-in">{errorForm}</div>}
 
-        {/* ==========================================
-            MÓDULO 1: FORMULARIO CLÍNICO COMPLETO
-            ========================================== */}
         {tabActiva === 'registro' && (
           <form onSubmit={registrarVenta} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Columna Izquierda: Ficha del Paciente */}
             <div className="lg:col-span-4 bg-white p-5 rounded-b-xl rounded-tr-xl border space-y-4 shadow-sm self-start">
               <h2 className="text-xs font-extrabold text-slate-700 border-b pb-2">FICHA DEL PACIENTE</h2>
               <div><label className="text-[10px] font-bold text-slate-500 block mb-1">DNI *</label><input type="text" maxLength="8" required value={dni} onChange={(e)=>setDni(e.target.value)} placeholder="8 dígitos" className="w-full p-2 border rounded font-bold text-sm outline-none focus:border-sky-600" /></div>
@@ -308,134 +281,60 @@ export default function App() {
               <div><label className="text-[10px] font-bold text-slate-500 block mb-1">TELÉFONO</label><input type="text" value={telefono} onChange={(e)=>setTelefono(e.target.value)} placeholder="Teléfono de contacto" className="w-full p-2 border rounded text-sm outline-none focus:border-sky-600" /></div>
             </div>
 
-            {/* Columna Derecha: Prescripción, Lente y Caja */}
             <div className="lg:col-span-8 bg-white p-5 rounded-b-xl rounded-tl-xl border space-y-6 shadow-sm">
-              {/* Tabla de Refracción Completa */}
               <div>
                 <h2 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">REFRACCIÓN LEJOS (Según talonario)</h2>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse min-w-[500px]">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-600 text-[10px] font-bold border-b">
-                        <th className="p-2">OJO</th><th className="p-2">R.P.</th><th className="p-2">ESF</th><th className="p-2">CIL.</th><th className="p-2">EJE</th><th className="p-2">DIP</th><th className="p-2">ALT</th>
-                      </tr>
-                    </thead>
+                    <thead><tr className="bg-slate-100 text-slate-600 text-[10px] font-bold border-b"><th className="p-2">OJO</th><th className="p-2">R.P.</th><th className="p-2">ESF</th><th className="p-2">CIL.</th><th className="p-2">EJE</th><th className="p-2">DIP</th><th className="p-2">ALT</th></tr></thead>
                     <tbody className="text-xs text-slate-700 divide-y">
-                      <tr>
-                        <td className="p-2 font-bold text-sky-700">O.D.</td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center" value={od.rp} onChange={(e)=>handleUpdateOd('rp', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={od.esf} onChange={(e)=>handleUpdateOd('esf', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={od.cil} onChange={(e)=>handleUpdateOd('cil', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center" value={od.eje} onChange={(e)=>handleUpdateOd('eje', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center" value={od.dip} onChange={(e)=>handleUpdateOd('dip', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center" value={od.alt} onChange={(e)=>handleUpdateOd('alt', e.target.value)} /></td>
-                      </tr>
-                      <tr>
-                        <td className="p-2 font-bold text-sky-700">O.I.</td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center" value={oi.rp} onChange={(e)=>handleUpdateOi('rp', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={oi.esf} onChange={(e)=>handleUpdateOi('esf', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={oi.cil} onChange={(e)=>handleUpdateOi('cil', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center" value={oi.eje} onChange={(e)=>handleUpdateOi('eje', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center" value={oi.dip} onChange={(e)=>handleUpdateOi('dip', e.target.value)} /></td>
-                        <td><input type="text" className="w-full p-1 border rounded text-center" value={oi.alt} onChange={(e)=>handleUpdateOi('alt', e.target.value)} /></td>
-                      </tr>
+                      <tr><td className="p-2 font-bold text-sky-700">O.D.</td><td><input type="text" className="w-full p-1 border rounded text-center" value={od.rp} onChange={(e)=>handleUpdateOd('rp', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={od.esf} onChange={(e)=>handleUpdateOd('esf', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={od.cil} onChange={(e)=>handleUpdateOd('cil', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={od.eje} onChange={(e)=>handleUpdateOd('eje', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={od.dip} onChange={(e)=>handleUpdateOd('dip', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={od.alt} onChange={(e)=>handleUpdateOd('alt', e.target.value)} /></td></tr>
+                      <tr><td className="p-2 font-bold text-sky-700">O.I.</td><td><input type="text" className="w-full p-1 border rounded text-center" value={oi.rp} onChange={(e)=>handleUpdateOi('rp', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={oi.esf} onChange={(e)=>handleUpdateOi('esf', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={oi.cil} onChange={(e)=>handleUpdateOi('cil', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={oi.eje} onChange={(e)=>handleUpdateOi('eje', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={oi.dip} onChange={(e)=>handleUpdateOi('dip', e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={oi.alt} onChange={(e)=>handleUpdateOi('alt', e.target.value)} /></td></tr>
                     </tbody>
                   </table>
                 </div>
-                {/* Adición Cerca */}
-                <div className="mt-3 max-w-xs">
-                  <label className="text-[10px] font-bold text-slate-500 block mb-1">CERCA ADD.</label>
-                  <input type="text" value={cercaAdd} onChange={(e)=>setCercaAdd(e.target.value)} placeholder="Ej. +2.00" className="w-full p-1.5 border rounded text-xs outline-none focus:border-sky-600" />
-                </div>
+                <div className="mt-3 max-w-xs"><label className="text-[10px] font-bold text-slate-500 block mb-1">CERCA ADD.</label><input type="text" value={cercaAdd} onChange={(e)=>setCercaAdd(e.target.value)} placeholder="Ej. +2.00" className="w-full p-1.5 border rounded text-xs outline-none focus:border-sky-600" /></div>
               </div>
 
-              {/* Especificaciones de Producto */}
               <div>
                 <h2 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">ESPECIFICACIONES DEL PRODUCTO</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div><label className="text-[10px] font-bold text-slate-500 block mb-1">MONTURA</label><input type="text" value={montura} onChange={(e)=>setMontura(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
-                  <div><label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO TRABAJO</label><input type="text" value={tipoTrabajo} onChange={(e)=>setTipoTrabajo(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
-                  <div><label className="text-[10px] font-bold text-slate-500 block mb-1">TRATADO</label><input type="text" value={tratado} onChange={(e)=>setTratado(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
+                  <div><label className="text-[10px] font-bold text-slate-500 block mb-1">MONTURA</label><input type="text" value={montura} onChange={(e)=>setMontura(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div><div><label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO TRABAJO</label><input type="text" value={tipoTrabajo} onChange={(e)=>setTipoTrabajo(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div><div><label className="text-[10px] font-bold text-slate-500 block mb-1">TRATADO</label><input type="text" value={tratado} onChange={(e)=>setTratado(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
                 </div>
               </div>
 
-              {/* Liquidación de Cobro */}
               <div className="bg-slate-50 p-4 rounded-xl border">
                 <h3 className="text-[10px] font-extrabold text-slate-400 mb-3 uppercase">Estructura de Cobro</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div><label className="text-[10px] font-bold text-slate-600 block mb-1">TOTAL S/</label><input type="number" required value={total} onChange={(e)=>setTotal(e.target.value)} className="w-full p-2 border rounded font-bold text-sm outline-none focus:border-sky-600 bg-white" /></div>
-                  <div><label className="text-[10px] font-bold text-slate-600 block mb-1">A CTA. S/</label><input type="number" required value={aCuenta} onChange={(e)=>setACuenta(e.target.value)} className="w-full p-2 border rounded font-bold text-emerald-600 text-sm outline-none focus:border-sky-600 bg-white" /></div>
-                  <div><label className="text-[10px] font-bold text-slate-600 block mb-1">SALDO</label><div className="w-full p-2 border rounded bg-slate-200/60 font-bold text-rose-600 text-sm">{saldoCalculado}</div></div>
-                  <div><label className="text-[10px] font-bold text-slate-600 block mb-1">FECHA DE ENTREGA</label><input type="date" value={fechaEntrega} onChange={(e)=>setFechaEntrega(e.target.value)} className="w-full p-2 border rounded text-xs text-slate-700 outline-none focus:border-sky-600 bg-white" /></div>
+                  <div><label className="text-[10px] font-bold text-slate-600 block mb-1">TOTAL S/</label><input type="number" required value={total} onChange={(e)=>setTotal(e.target.value)} className="w-full p-2 border rounded font-bold text-sm outline-none focus:border-sky-600 bg-white" /></div><div><label className="text-[10px] font-bold text-slate-600 block mb-1">A CTA. S/</label><input type="number" required value={aCuenta} onChange={(e)=>setACuenta(e.target.value)} className="w-full p-2 border rounded font-bold text-emerald-600 text-sm outline-none focus:border-sky-600 bg-white" /></div><div><label className="text-[10px] font-bold text-slate-600 block mb-1">SALDO</label><div className="w-full p-2 border rounded bg-slate-200/60 font-bold text-rose-600 text-sm">{saldoCalculado}</div></div><div><label className="text-[10px] font-bold text-slate-600 block mb-1">FECHA DE ENTREGA</label><input type="date" value={fechaEntrega} onChange={(e)=>setFechaEntrega(e.target.value)} className="w-full p-2 border rounded text-xs text-slate-700 outline-none focus:border-sky-600 bg-white" /></div>
                 </div>
               </div>
 
-              <button type="submit" disabled={cargandoVenta} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-bold text-sm shadow flex items-center justify-center transition-all disabled:opacity-50">
-                {cargandoVenta ? 'Sincronizando expediente...' : 'Confirmar Transacción e Imprimir Orden'}
-              </button>
+              <button type="submit" disabled={cargandoVenta} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-bold text-sm shadow flex items-center justify-center transition-all disabled:opacity-50">{cargandoVenta ? 'Sincronizando expediente...' : 'Confirmar Transacción e Imprimir Orden'}</button>
             </div>
           </form>
         )}
 
-        {/* ==========================================
-            MÓDULO 2: DIRECTORIO GLOBAL Y AUDITORÍA
-            ========================================== */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Panel Izquierdo: Directorio con botón Nuke para Admin */}
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm self-start space-y-4 sticky top-24">
-              <div className="flex flex-col space-y-2 border-b pb-3">
-                <h3 className="text-xs font-extrabold text-slate-700">DIRECTORIO GLOBAL</h3>
-                <button 
-                  onClick={cargarDirectorioGlobal} 
-                  disabled={cargandoDirectorio}
-                  className="w-full bg-slate-100 hover:bg-sky-50 text-sky-700 border border-slate-200 hover:border-sky-200 font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center transition-all shadow-sm disabled:opacity-50"
-                >
-                  {cargandoDirectorio ? <span className="animate-spin h-3.5 w-3.5 border-b-2 border-sky-700 rounded-full mr-2"></span> : null}
-                  {cargandoDirectorio ? 'Sincronizando...' : '🔄 Sincronizar Directorio'}
-                </button>
-              </div>
-
-              {cargandoDirectorio ? (
-                <div className="text-center py-8 text-xs text-slate-400 animate-pulse">Cargando base de datos...</div>
-              ) : listaDirectorio.length === 0 ? (
-                <div className="text-center py-8 text-xs text-slate-400 border border-dashed rounded-lg">Directorio vacío</div>
-              ) : (
+              <div className="flex flex-col space-y-2 border-b pb-3"><h3 className="text-xs font-extrabold text-slate-700">DIRECTORIO GLOBAL</h3><button onClick={cargarDirectorioGlobal} disabled={cargandoDirectorio} className="w-full bg-slate-100 hover:bg-sky-50 text-sky-700 border border-slate-200 hover:border-sky-200 font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center transition-all shadow-sm disabled:opacity-50">{cargandoDirectorio ? <span className="animate-spin h-3.5 w-3.5 border-b-2 border-sky-700 rounded-full mr-2"></span> : null}{cargandoDirectorio ? 'Sincronizando...' : '🔄 Sincronizar Directorio'}</button></div>
+              {cargandoDirectorio ? <div className="text-center py-8 text-xs text-slate-400 animate-pulse">Cargando base de datos...</div> : listaDirectorio.length === 0 ? <div className="text-center py-8 text-xs text-slate-400 border border-dashed rounded-lg">Directorio vacío</div> : (
                 <div className="divide-y max-h-[450px] overflow-y-auto pr-1">
                   {listaDirectorio.map(cli => (
-                    <div 
-                      key={cli.dni} 
-                      onClick={() => { setBusquedaDni(cli.dni); consultarExpediente(cli.dni); }} 
-                      className={`p-3 hover:bg-slate-50 cursor-pointer rounded-lg transition-colors flex justify-between items-center group ${busquedaDni === cli.dni ? 'bg-sky-50 border-l-4 border-sky-600' : ''}`}
-                    >
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">{cli.nombres}</p>
-                        <span className="text-[10px] text-slate-500 font-medium block mt-0.5">DNI: {cli.dni}</span>
-                      </div>
-                      {/* BOTÓN DE ELIMINACIÓN DE DIRECTORIO (X ROJA) SOLO PARA ADMIN */}
-                      {rolActual === 'admin' && (
-                        <button 
-                          onClick={(e) => purgarClienteCompleto(e, `cli_${cli.dni}`, cli.nombres)} 
-                          title="Eliminar paciente y todas sus órdenes"
-                          className="text-rose-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 font-extrabold text-base px-2 py-0.5 rounded hover:bg-rose-50 transition-all"
-                        >
-                          ✕
-                        </button>
-                      )}
+                    <div key={cli.dni} onClick={() => { setBusquedaDni(cli.dni); consultarExpediente(cli.dni); }} className={`p-3 hover:bg-slate-50 cursor-pointer rounded-lg transition-colors flex justify-between items-center group ${busquedaDni === cli.dni ? 'bg-sky-50 border-l-4 border-sky-600' : ''}`}>
+                      <div><p className="text-xs font-bold text-slate-800">{cli.nombres}</p><span className="text-[10px] text-slate-500 font-medium block mt-0.5">DNI: {cli.dni}</span></div>
+                      {rolActual === 'admin' && <button onClick={(e) => purgarClienteCompleto(e, `cli_${cli.dni}`, cli.nombres)} title="Eliminar paciente y todas sus órdenes" className="text-rose-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 font-extrabold text-base px-2 py-0.5 rounded hover:bg-rose-50 transition-all">✕</button>}
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Panel Derecho: Búsqueda y Desglose de Órdenes */}
             <div className="lg:col-span-8 bg-white p-5 rounded-b-xl rounded-tl-xl border space-y-6 shadow-sm">
               <form onSubmit={(e)=>{e.preventDefault(); consultarExpediente(busquedaDni);}} className="space-y-2">
                 <label className="text-xs font-extrabold text-slate-700 block">AUDITORÍA HISTÓRICA POR DNI</label>
-                <div className="flex space-x-3">
-                  <input type="text" maxLength="8" required value={busquedaDni} onChange={(e)=>setBusquedaDni(e.target.value)} placeholder="Ingrese número de documento..." className="flex-1 p-2.5 border rounded-lg text-sm outline-none focus:border-sky-600" />
-                  <button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50">{cargandoBusqueda ? 'Buscando...' : 'Auditar'}</button>
-                </div>
+                <div className="flex space-x-3"><input type="text" maxLength="8" required value={busquedaDni} onChange={(e)=>setBusquedaDni(e.target.value)} placeholder="Ingrese número de documento..." className="flex-1 p-2.5 border rounded-lg text-sm outline-none focus:border-sky-600" /><button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50">{cargandoBusqueda ? 'Buscando...' : 'Auditar'}</button></div>
                 {estadoBusqueda && <p className="text-xs text-slate-500 font-medium mt-1">{estadoBusqueda}</p>}
               </form>
 
@@ -450,33 +349,14 @@ export default function App() {
                 {cargandoBusqueda ? <div className="text-center py-8 text-xs text-slate-400 animate-pulse">Consultando BD...</div> : ordenesCliente.length === 0 ? <div className="text-center py-8 border-2 border-dashed rounded-xl text-slate-400 text-xs font-medium">{clienteEncontrado ? 'Sin transacciones en el expediente.' : 'Seleccione un paciente de la lista.'}</div> : (
                   <div className="space-y-3">
                     {ordenesCliente.map((ord) => (
-                      <div 
-                        key={ord.id} 
-                        onClick={() => setOrdenSeleccionada(ord)}
-                        className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md cursor-pointer transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative group border-l-4 border-l-sky-500 hover:bg-slate-50/50"
-                      >
+                      <div key={ord.id} onClick={() => setOrdenSeleccionada(ord)} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md cursor-pointer transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative group border-l-4 border-l-sky-500 hover:bg-slate-50/50">
                         <div className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <span className="bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded text-[10px] border border-sky-100">{ord.numeroOrden}</span>
-                            <span className="text-xs text-slate-400 font-medium">{new Date(ord.fechaOrden).toLocaleDateString()}</span>
-                          </div>
+                          <div className="flex items-center space-x-2"><span className="bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded text-[10px] border border-sky-100">{ord.numeroOrden}</span><span className="text-xs text-slate-400 font-medium">{new Date(ord.fechaOrden).toLocaleDateString()}</span></div>
                           <p className="text-xs font-bold text-slate-800">{ord.montura || 'Cristal / Servicio'} • <span className="text-slate-600 font-normal">{ord.tipoTrabajo}</span></p>
                           <span className="text-[10px] text-slate-400 block">Atendido por: <strong className="text-slate-600">{ord.vendedor || 'Especialista'}</strong></span>
                         </div>
-
                         <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end border-t md:border-t-0 pt-2 md:pt-0 gap-2">
-                          <div className="flex items-center space-x-3">
-                            <span className="text-xs font-extrabold text-slate-800">Total: S/ {ord.total}</span>
-                            {/* Borrado individual de orden solo para Admin */}
-                            {rolActual === 'admin' && (
-                              <button 
-                                onClick={(e) => eliminarOrdenRegistro(e, ord.id, ord.numeroOrden)}
-                                className="text-[10px] text-rose-500 hover:text-rose-700 border border-rose-200 hover:bg-rose-50 px-2 py-1 rounded transition-colors font-bold"
-                              >
-                                Eliminar
-                              </button>
-                            )}
-                          </div>
+                          <div className="flex items-center space-x-3"><span className="text-xs font-extrabold text-slate-800">Total: S/ {ord.total}</span>{rolActual === 'admin' && <button onClick={(e) => eliminarOrdenRegistro(e, ord.id, ord.numeroOrden)} className="text-[10px] text-rose-500 hover:text-rose-700 border border-rose-200 hover:bg-rose-50 px-2 py-1 rounded transition-colors font-bold">Eliminar</button>}</div>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${ord.saldo > 0 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>{ord.saldo > 0 ? `Saldo: S/ ${ord.saldo}` : 'Liquidado'}</span>
                         </div>
                       </div>
@@ -488,25 +368,12 @@ export default function App() {
           </div>
         )}
 
-        {/* =========================================================
-            MODAL DE RECETA COMPLETA AL HACER CLIC EN EL HISTORIAL
-            ========================================================= */}
         {ordenSeleccionada && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border overflow-hidden flex flex-col max-h-[90vh]">
-              <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
-                <div><span className="text-[10px] bg-sky-500 text-white font-bold px-2 py-0.5 rounded uppercase">Receta de Archivo</span><h3 className="font-extrabold text-base mt-0.5">Expediente: {ordenSeleccionada.numeroOrden}</h3></div>
-                <button onClick={() => setOrdenSeleccionada(null)} className="text-slate-400 hover:text-white font-bold text-lg px-2 py-1">&times;</button>
-              </div>
-
+              <div className="bg-slate-800 text-white p-4 flex justify-between items-center"><div><span className="text-[10px] bg-sky-500 text-white font-bold px-2 py-0.5 rounded uppercase">Receta de Archivo</span><h3 className="font-extrabold text-base mt-0.5">Expediente: {ordenSeleccionada.numeroOrden}</h3></div><button onClick={() => setOrdenSeleccionada(null)} className="text-slate-400 hover:text-white font-bold text-lg px-2 py-1">&times;</button></div>
               <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-4 border-b text-xs">
-                  <div><span className="text-slate-400 block font-bold text-[10px]">FECHA REGISTRO</span><p className="font-bold text-slate-700">{new Date(ordenSeleccionada.fechaOrden).toLocaleString()}</p></div>
-                  <div><span className="text-slate-400 block font-bold text-[10px]">ESPECIALISTA</span><p className="font-bold text-sky-700">{ordenSeleccionada.vendedor || 'No especificado'}</p></div>
-                  <div><span className="text-slate-400 block font-bold text-[10px]">FECHA DE ENTREGA</span><p className="font-bold text-slate-700">{ordenSeleccionada.fechaEntrega || 'Inmediata'}</p></div>
-                </div>
-
-                {/* Desglose exacto de los campos guardados */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-4 border-b text-xs"><div><span className="text-slate-400 block font-bold text-[10px]">FECHA REGISTRO</span><p className="font-bold text-slate-700">{new Date(ordenSeleccionada.fechaOrden).toLocaleString()}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">ESPECIALISTA</span><p className="font-bold text-sky-700">{ordenSeleccionada.vendedor || 'No especificado'}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">FECHA DE ENTREGA</span><p className="font-bold text-slate-700">{ordenSeleccionada.fechaEntrega || 'Inmediata'}</p></div></div>
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">REFRACCIÓN VISUAL REGISTRADA</h4>
                   <table className="w-full text-left border-collapse min-w-[450px]">
@@ -518,27 +385,18 @@ export default function App() {
                   </table>
                   {ordenSeleccionada.refraccion?.cercaAdd && <p className="text-xs mt-2 text-slate-600"><strong className="text-slate-800">CERCA ADD:</strong> {ordenSeleccionada.refraccion.cercaAdd}</p>}
                 </div>
-
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">ESPECIFICACIONES DE PRODUCTO</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border text-xs">
-                    <div><span className="text-[10px] text-slate-400 block font-bold">MONTURA</span><p className="font-bold text-slate-800">{ordenSeleccionada.montura || 'Ninguna'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TIPO TRABAJO</span><p className="font-bold text-slate-800">{ordenSeleccionada.tipoTrabajo || 'Estándar'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TRATADO</span><p className="font-bold text-slate-800">{ordenSeleccionada.tratado || 'Ninguno'}</p></div>
-                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border text-xs"><div><span className="text-[10px] text-slate-400 block font-bold">MONTURA</span><p className="font-bold text-slate-800">{ordenSeleccionada.montura || 'Ninguna'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TIPO TRABAJO</span><p className="font-bold text-slate-800">{ordenSeleccionada.tipoTrabajo || 'Estándar'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TRATADO</span><p className="font-bold text-slate-800">{ordenSeleccionada.tratado || 'Ninguno'}</p></div></div>
                 </div>
-
-                <div className="bg-slate-100 p-4 rounded-xl flex justify-between items-center text-sm">
-                  <div><span className="text-[10px] font-bold text-slate-500 block uppercase">Liquidación en Caja</span><p className="font-extrabold text-slate-800">Total S/: {ordenSeleccionada.total}</p></div>
-                  <div className="text-right"><span className="text-[10px] font-bold text-slate-500 block uppercase">Estado Financiero</span><p className={`font-extrabold ${ordenSeleccionada.saldo > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{ordenSeleccionada.saldo > 0 ? `Saldo Pendiente: S/ ${ordenSeleccionada.saldo}` : 'Cancelado al 100%'}</p></div>
-                </div>
+                <div className="bg-slate-100 p-4 rounded-xl flex justify-between items-center text-sm"><div><span className="text-[10px] font-bold text-slate-500 block uppercase">Liquidación en Caja</span><p className="font-extrabold text-slate-800">Total S/: {ordenSeleccionada.total}</p></div><div className="text-right"><span className="text-[10px] font-bold text-slate-500 block uppercase">Estado Financiero</span><p className={`font-extrabold ${ordenSeleccionada.saldo > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{ordenSeleccionada.saldo > 0 ? `Saldo Pendiente: S/ ${ordenSeleccionada.saldo}` : 'Cancelado al 100%'}</p></div></div>
               </div>
-
               <div className="p-4 border-t bg-slate-50 text-right sticky bottom-0"><button onClick={() => setOrdenSeleccionada(null)} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-lg transition-colors">Cerrar Inspección</button></div>
             </div>
           </div>
         )}
       </main>
 
-      {/* FOOTER OFICIAL CON DIRECCIÓN Y FIRMA */}
       <footer className="w-full bg-slate-900 text-slate-500 text-center py-6 mt-12 border-t border-slate-800">
         <div className="max-w-7xl mx-auto px-4 space-y-1.5">
           <p className="text-xs font-bold text-slate-300 tracking-wide">Óptica MV</p>
