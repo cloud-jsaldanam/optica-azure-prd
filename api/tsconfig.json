@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "nodenext",
     "target": "es6",
     "sourceMap": false,
     "strict": false,
-    "moduleResolution": "node",
+    "moduleResolution": "nodenext",
     "esModuleInterop": true
   },
   "include": [
