@@ -15,7 +15,6 @@ export default function App() {
   const [dataVentas, setDataVentas] = useState(null);
   const [dataClientes, setDataClientes] = useState(null);
 
-  // Módulo 1: Formulario Transaccional
   const [dni, setDni] = useState('');
   const [nombres, setNombres] = useState('');
   const [direccion, setDireccion] = useState('');
@@ -31,7 +30,6 @@ export default function App() {
   const [cercaAdd, setCercaAdd] = useState('');
   const [cargandoVenta, setCargandoVenta] = useState(false);
 
-  // Módulo 2: Directorio Global e Historial
   const [listaDirectorio, setListaDirectorio] = useState([]);
   const [cargandoDirectorio, setCargandoDirectorio] = useState(false);
   const [busquedaDni, setBusquedaDni] = useState('');
@@ -46,21 +44,25 @@ export default function App() {
   const saldoCalculado = (Number(total) || 0) - (Number(aCuenta) || 0);
 
   // =========================================================================
-  // INTERCEPTOR BLINDADO: LECTURA DIRECTA EN TIEMPO REAL
-  // Leemos siempre de localStorage para evitar la latencia del estado de React
+  // INTERCEPTOR EXCLUSIVO: EVASIÓN DE REGLAS DE BORDE DE AZURE
+  // Enviamos EXCLUSIVAMENTE 'x-optica-auth' para que Azure no toque la firma
   // =========================================================================
   const fetchSeguro = async (endpoint, options = {}) => {
     const tokenActual = localStorage.getItem('jwt_optica') || token;
     const headers = { 
       ...options.headers, 
-      'Authorization': `Bearer ${tokenActual}`,
       'x-optica-auth': `Bearer ${tokenActual}` 
     };
     const res = await fetch(endpoint, { ...options, headers });
     if (res.status === 401) {
+      let detalle = "";
+      try {
+        const errJson = await res.json();
+        if (errJson.error) detalle = ` Detalles: ${errJson.error}`;
+      } catch(e){}
       localStorage.removeItem('jwt_optica'); 
       setToken('');
-      throw new Error("Sesión caducada por seguridad. Vuelva a autenticarse.");
+      throw new Error(`Sesión rechazada por seguridad.${detalle}`);
     }
     return res;
   };
@@ -71,20 +73,10 @@ export default function App() {
       const res = await fetchSeguro('/api/dashboard');
       if (res.ok) {
         const data = await res.json();
-        if (data.topVentas?.length) {
-          setDataVentas({ 
-            labels: data.topVentas.map(v => v.numeroOrden), 
-            datasets: [{ label: 'Monto (S/)', data: data.topVentas.map(v => v.total), backgroundColor: '#0284c7' }] 
-          });
-        }
-        if (data.topClientes?.length) {
-          setDataClientes({ 
-            labels: data.topClientes.map(c => c.nombres?.split(' ')[0] || 'Cliente'), 
-            datasets: [{ label: 'Órdenes', data: data.topClientes.map(c => c.cantidadComprada), backgroundColor: '#059669' }] 
-          });
-        }
+        if (data.topVentas?.length) setDataVentas({ labels: data.topVentas.map(v => v.numeroOrden), datasets: [{ label: 'Monto (S/)', data: data.topVentas.map(v => v.total), backgroundColor: '#0284c7' }] });
+        if (data.topClientes?.length) setDataClientes({ labels: data.topClientes.map(c => c.nombres?.split(' ')[0] || 'Cliente'), datasets: [{ label: 'Órdenes', data: data.topClientes.map(c => c.cantidadComprada), backgroundColor: '#059669' }] });
       }
-    } catch (err) { /* Gestionado silenciosamente por la UI */ }
+    } catch (err) { console.error(err.message); }
   };
 
   const cargarDirectorioGlobal = async () => {
@@ -92,9 +84,7 @@ export default function App() {
     setCargandoDirectorio(true);
     try {
       const res = await fetchSeguro('/api/clientes');
-      if (res.ok) {
-        setListaDirectorio((await res.json()).clientes || []);
-      }
+      if (res.ok) setListaDirectorio((await res.json()).clientes || []);
     } catch (err) { } finally { setCargandoDirectorio(false); }
   };
 
@@ -108,85 +98,45 @@ export default function App() {
   const handleLogin = async (e) => {
     e.preventDefault(); setErrorLogin(''); setCargandoLogin(true);
     try {
-      const res = await fetch('/api/login', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ usuario: usuario.trim(), password: password.trim() }) 
-      });
+      const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usuario: usuario.trim(), password: password.trim() }) });
       const data = await res.json();
       if (res.ok) { 
-        // 1. Guardamos en disco duro inmediatamente
         localStorage.setItem('jwt_optica', data.token); 
-        // 2. Actualizamos estado visual
         setToken(data.token); 
-        // 3. Forzamos la carga analítica directa con la firma fresca
-        setTimeout(() => cargarDashboard(), 100);
-      } else {
-        setErrorLogin(data.error || 'Credenciales corporativas inválidas');
-      }
-    } catch (err) { 
-      setErrorLogin('Fallo de conexión con el servidor de identidades.'); 
-    } finally { setCargandoLogin(false); }
+      } else setErrorLogin(data.error || 'Credenciales inválidas');
+    } catch (err) { setErrorLogin('Fallo de conexión con el servidor.'); } 
+    finally { setCargandoLogin(false); }
   };
 
-  const seleccionarDesdeDirectorio = (cliente) => {
-    setBusquedaDni(cliente.dni);
-    consultarExpediente(cliente.dni);
-  };
+  const seleccionarDesdeDirectorio = (cliente) => { setBusquedaDni(cliente.dni); consultarExpediente(cliente.dni); };
 
   const consultarExpediente = async (targetDni) => {
     if (!targetDni) return;
-    setErrorForm(''); setMensajeExito(''); setEstadoBusqueda('');
-    setCargandoBusqueda(true); setClienteEncontrado(null); setOrdenesCliente([]);
+    setErrorForm(''); setMensajeExito(''); setEstadoBusqueda(''); setCargandoBusqueda(true); setClienteEncontrado(null); setOrdenesCliente([]);
     try {
       const res = await fetchSeguro(`/api/cliente?dni=${targetDni.trim()}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.cliente || data.ordenes?.length) { 
-          setClienteEncontrado(data.cliente); 
-          setOrdenesCliente(data.ordenes || []); 
-        } else {
-          setEstadoBusqueda('Auditoría: No se localizaron expedientes históricos para este documento.');
-        }
+        if (data.cliente || data.ordenes?.length) { setClienteEncontrado(data.cliente); setOrdenesCliente(data.ordenes || []); } 
+        else setEstadoBusqueda('No se localizaron transacciones para este documento.');
       }
-    } catch (err) { 
-      setEstadoBusqueda(err.message); 
-    } finally { setCargandoBusqueda(false); }
+    } catch (err) { setEstadoBusqueda(err.message); } finally { setCargandoBusqueda(false); }
   };
 
   const registrarVenta = async (e) => {
     e.preventDefault(); setErrorForm(''); setMensajeExito(''); setCargandoVenta(true);
-    if (!dni || !nombres) { 
-      setErrorForm('Los campos DNI y Nombres son requeridos.'); 
-      setCargandoVenta(false); 
-      return; 
-    }
-    const payload = { 
-      dni: dni.trim(), nombres: nombres.trim(), direccion, telefono, montura, tipoTrabajo, tratado, fechaEntrega, 
-      aCuenta: Number(aCuenta), saldo: saldoCalculado, total: Number(total), 
-      refraccion: { od, oi, cercaAdd } 
-    };
+    if (!dni || !nombres) { setErrorForm('DNI y Nombres son obligatorios.'); setCargandoVenta(false); return; }
+    const payload = { dni: dni.trim(), nombres: nombres.trim(), direccion, telefono, montura, tipoTrabajo, tratado, fechaEntrega, aCuenta: Number(aCuenta), saldo: saldoCalculado, total: Number(total), refraccion: { od, oi, cercaAdd } };
     try {
-      const res = await fetchSeguro('/api/venta', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(payload) 
-      });
+      const res = await fetchSeguro('/api/venta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (res.ok) {
-        setMensajeExito(`¡Transacción ${data.numeroOrden} procesada en vivo! Base de datos sincronizada.`);
+        setMensajeExito(`¡Venta procesada exitosamente! Orden: ${data.numeroOrden}`);
         setTotal(''); setACuenta(''); setMontura(''); setTipoTrabajo(''); setTratado(''); setFechaEntrega('');
-        setOd({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); 
-        setOi({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); 
-        setCercaAdd('');
-        cargarDashboard(); 
-        if (tabActiva === 'historial') cargarDirectorioGlobal();
-      } else {
-        setErrorForm(data.error || 'Fallo al procesar el registro de la venta.');
-      }
-    } catch (err) { 
-      setErrorForm(err.message); 
-    } finally { setCargandoVenta(false); }
+        setOd({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); setOi({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); setCercaAdd('');
+        cargarDashboard(); if (tabActiva === 'historial') cargarDirectorioGlobal();
+      } else setErrorForm(data.error || 'Fallo registrando la orden.');
+    } catch (err) { setErrorForm(err.message); } finally { setCargandoVenta(false); }
   };
 
   const handleUpdateOd = (field, val) => setOd(prev => ({ ...prev, [field]: val }));
@@ -195,23 +145,12 @@ export default function App() {
   if (!token) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-2xl p-8 border border-slate-100">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-extrabold text-slate-800">Óptica Core Prd</h2>
-          <p className="text-xs text-slate-500 mt-1">Plataforma Serverless Administrada</p>
-        </div>
+        <div className="text-center mb-6"><h2 className="text-2xl font-extrabold text-slate-800">Óptica Core Prd</h2><p className="text-xs text-slate-500 mt-1">Plataforma Serverless Administrada</p></div>
         {errorLogin && <div className="bg-rose-50 border-l-4 border-rose-600 text-rose-800 p-3 rounded text-xs mb-4 font-medium">{errorLogin}</div>}
         <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-slate-600 block mb-1">USUARIO</label>
-            <input type="text" required value={usuario} onChange={(e)=>setUsuario(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="admin" />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-slate-600 block mb-1">CLAVE DE ACCESO</label>
-            <input type="password" required value={password} onChange={(e)=>setPassword(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="••••••••••••" />
-          </div>
-          <button type="submit" disabled={cargandoLogin} className="w-full bg-sky-600 hover:bg-sky-700 text-white p-3 rounded-lg font-bold text-sm shadow flex items-center justify-center transition-all disabled:opacity-50">
-            {cargandoLogin ? <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span> : 'Ingresar al Portal'}
-          </button>
+          <div><label className="text-xs font-bold text-slate-600 block mb-1">USUARIO</label><input type="text" required value={usuario} onChange={(e)=>setUsuario(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="admin" /></div>
+          <div><label className="text-xs font-bold text-slate-600 block mb-1">CLAVE DE ACCESO</label><input type="password" required value={password} onChange={(e)=>setPassword(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="••••••••••••" /></div>
+          <button type="submit" disabled={cargandoLogin} className="w-full bg-sky-600 hover:bg-sky-700 text-white p-3 rounded-lg font-bold text-sm shadow flex items-center justify-center transition-all disabled:opacity-50">{cargandoLogin ? <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span> : 'Ingresar al Portal'}</button>
         </form>
       </div>
     </div>
@@ -220,23 +159,14 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 pb-12">
       <header className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm">
-        <div className="flex items-center space-x-3">
-          <span className="bg-sky-600 text-white font-bold px-2.5 py-1 rounded text-xs animate-pulse">LIVE</span>
-          <h1 className="font-extrabold text-slate-800 text-base md:text-lg">Gestión Optométrica Integrada</h1>
-        </div>
+        <div className="flex items-center space-x-3"><span className="bg-sky-600 text-white font-bold px-2.5 py-1 rounded text-xs animate-pulse">LIVE</span><h1 className="font-extrabold text-slate-800 text-base md:text-lg">Gestión Optométrica Integrada</h1></div>
         <button onClick={()=>{localStorage.removeItem('jwt_optica'); setToken('');}} className="text-xs text-rose-600 font-bold px-3 py-1.5 border border-rose-200 hover:bg-rose-50 rounded transition-colors">Desconectar</button>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 mt-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-4 rounded-xl border shadow-sm">
-            <h2 className="text-xs font-bold text-slate-400 text-center mb-2 uppercase">Telemetría de Ventas</h2>
-            <div className="h-40">{dataVentas ? <Bar data={dataVentas} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} /> : <div className="h-full flex items-center justify-center text-xs text-slate-300 animate-pulse">Procesando analíticas...</div>}</div>
-          </div>
-          <div className="bg-white p-4 rounded-xl border shadow-sm">
-            <h2 className="text-xs font-bold text-slate-400 text-center mb-2 uppercase">Pacientes Activos</h2>
-            <div className="h-40">{dataClientes ? <Bar data={dataClientes} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} /> : <div className="h-full flex items-center justify-center text-xs text-slate-300 animate-pulse">Procesando analíticas...</div>}</div>
-          </div>
+          <div className="bg-white p-4 rounded-xl border shadow-sm"><h2 className="text-xs font-bold text-slate-400 text-center mb-2 uppercase">Telemetría de Ventas</h2><div className="h-40">{dataVentas ? <Bar data={dataVentas} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} /> : <div className="h-full flex items-center justify-center text-xs text-slate-300 animate-pulse">Cargando métricas...</div>}</div></div>
+          <div className="bg-white p-4 rounded-xl border shadow-sm"><h2 className="text-xs font-bold text-slate-400 text-center mb-2 uppercase">Pacientes Activos</h2><div className="h-40">{dataClientes ? <Bar data={dataClientes} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} /> : <div className="h-full flex items-center justify-center text-xs text-slate-300 animate-pulse">Cargando métricas...</div>}</div></div>
         </div>
 
         <div className="flex border-b border-slate-200 bg-white rounded-t-xl px-4 pt-2">
@@ -292,10 +222,7 @@ export default function App() {
                 </div>
               </div>
 
-              <button type="submit" disabled={cargandoVenta} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-bold text-sm shadow flex items-center justify-center transition-all disabled:opacity-50">
-                {cargandoVenta ? <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></span> : null}
-                {cargandoVenta ? 'Sincronizando con Cosmos DB...' : 'Confirmar Transacción y Registrar Venta'}
-              </button>
+              <button type="submit" disabled={cargandoVenta} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-bold text-sm shadow flex items-center justify-center transition-all disabled:opacity-50">{cargandoVenta ? 'Guardando...' : 'Confirmar Transacción y Registrar Venta'}</button>
             </div>
           </form>
         )}
@@ -303,77 +230,40 @@ export default function App() {
         {/* MÓDULO 2 */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* PANEL IZQUIERDO: Directorio de Pacientes */}
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm self-start space-y-3">
-              <div className="flex justify-between items-center border-b pb-2">
-                <h3 className="text-xs font-extrabold text-slate-700">DIRECTORIO GLOBAL</h3>
-                <button onClick={cargarDirectorioGlobal} className="text-[10px] text-sky-600 hover:underline">Refrescar</button>
-              </div>
-              {cargandoDirectorio ? (
-                <div className="text-center py-6 text-xs text-slate-400 animate-pulse">Cargando pacientes...</div>
-              ) : listaDirectorio.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-400">Directorio vacío</div>
-              ) : (
+              <div className="flex justify-between items-center border-b pb-2"><h3 className="text-xs font-extrabold text-slate-700">DIRECTORIO GLOBAL</h3><button onClick={cargarDirectorioGlobal} className="text-[10px] text-sky-600 hover:underline">Refrescar</button></div>
+              {cargandoDirectorio ? <div className="text-center py-6 text-xs text-slate-400 animate-pulse">Cargando pacientes...</div> : listaDirectorio.length === 0 ? <div className="text-center py-6 text-xs text-slate-400">Directorio vacío</div> : (
                 <div className="divide-y max-h-[450px] overflow-y-auto pr-1">
                   {listaDirectorio.map(cli => (
                     <div key={cli.dni} onClick={() => seleccionarDesdeDirectorio(cli)} className={`p-2.5 hover:bg-slate-50 cursor-pointer rounded transition-colors ${busquedaDni === cli.dni ? 'bg-sky-50 border-l-4 border-sky-600' : ''}`}>
-                      <p className="text-xs font-bold text-slate-800">{cli.nombres}</p>
-                      <span className="text-[10px] text-slate-500 font-medium">DNI: {cli.dni}</span>
+                      <p className="text-xs font-bold text-slate-800">{cli.nombres}</p><span className="text-[10px] text-slate-500 font-medium">DNI: {cli.dni}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* PANEL DERECHO: Auditoría */}
             <div className="lg:col-span-8 bg-white p-5 rounded-b-xl rounded-tl-xl border space-y-6 shadow-sm">
               <form onSubmit={(e)=>{e.preventDefault(); consultarExpediente(busquedaDni);}} className="space-y-2">
                 <label className="text-xs font-extrabold text-slate-700 block">INSPECCIÓN HISTÓRICA POR DNI</label>
-                <div className="flex space-x-3">
-                  <input type="text" maxLength="8" required value={busquedaDni} onChange={(e)=>setBusquedaDni(e.target.value)} placeholder="Ingrese documento a consultar..." className="flex-1 p-2.5 border rounded-lg text-sm outline-none focus:border-sky-600" />
-                  <button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50">
-                    {cargandoBusqueda ? 'Buscando...' : 'Auditar'}
-                  </button>
-                </div>
+                <div className="flex space-x-3"><input type="text" maxLength="8" required value={busquedaDni} onChange={(e)=>setBusquedaDni(e.target.value)} placeholder="Ingrese documento..." className="flex-1 p-2.5 border rounded-lg text-sm outline-none focus:border-sky-600" /><button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50">{cargandoBusqueda ? 'Buscando...' : 'Auditar'}</button></div>
                 {estadoBusqueda && <p className="text-xs text-slate-500 font-medium mt-1">{estadoBusqueda}</p>}
               </form>
 
               {clienteEncontrado && (
                 <div className="border-t pt-5 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border">
-                  <div><span className="text-[10px] font-bold text-slate-400 block">PACIENTE LOCALIZADO</span><p className="font-bold text-slate-800 text-sm">{clienteEncontrado.nombres}</p></div>
-                  <div><span className="text-[10px] font-bold text-slate-400 block">DOCUMENTO</span><p className="font-medium text-slate-700 text-sm">{clienteEncontrado.dni}</p></div>
-                  <div><span className="text-[10px] font-bold text-slate-400 block">CONTACTO</span><p className="text-xs text-slate-600">{clienteEncontrado.telefono || 'Sin tel'}</p></div>
+                  <div><span className="text-[10px] font-bold text-slate-400 block">PACIENTE LOCALIZADO</span><p className="font-bold text-slate-800 text-sm">{clienteEncontrado.nombres}</p></div><div><span className="text-[10px] font-bold text-slate-400 block">DOCUMENTO</span><p className="font-medium text-slate-700 text-sm">{clienteEncontrado.dni}</p></div><div><span className="text-[10px] font-bold text-slate-400 block">CONTACTO</span><p className="text-xs text-slate-600">{clienteEncontrado.telefono || 'Sin tel'}</p></div>
                 </div>
               )}
 
               <div>
                 <h3 className="text-xs font-extrabold text-slate-700 mb-3">HISTORIAL DE ÓRDENES ENTREGADAS</h3>
-                {cargandoBusqueda ? (
-                  <div className="text-center py-8 text-xs text-slate-400 animate-pulse">Consultando Cosmos DB...</div>
-                ) : ordenesCliente.length === 0 ? (
-                  <div className="text-center py-8 border-2 border-dashed rounded-xl text-slate-400 text-xs font-medium">
-                    {clienteEncontrado ? 'Este paciente no registra órdenes previas.' : 'Seleccione un paciente de la lista o consulte manualmente.'}
-                  </div>
-                ) : (
+                {cargandoBusqueda ? <div className="text-center py-8 text-xs text-slate-400 animate-pulse">Consultando BD...</div> : ordenesCliente.length === 0 ? <div className="text-center py-8 border-2 border-dashed rounded-xl text-slate-400 text-xs font-medium">{clienteEncontrado ? 'Sin órdenes previas.' : 'Seleccione o busque un paciente.'}</div> : (
                   <div className="space-y-3">
                     {ordenesCliente.map((ord, idx) => (
                       <div key={ord.id} className={`bg-white border rounded-xl p-4 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${idx === 0 ? 'border-l-4 border-l-emerald-500 bg-emerald-50/10' : ''}`}>
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2"><span className="bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded text-[10px] border border-sky-100">{ord.numeroOrden}</span><span className="text-xs text-slate-400 font-medium">{new Date(ord.fechaOrden).toLocaleDateString()}</span></div>
-                          <p className="text-xs font-bold text-slate-800">{ord.montura || 'Sin montura'} • <span className="text-slate-600 font-normal">{ord.tipoTrabajo} ({ord.tratado || 'Estándar'})</span></p>
-                        </div>
-                        {ord.refraccion && (
-                          <div className="text-[10px] bg-slate-50 px-3 py-1.5 rounded border space-y-0.5 text-slate-600">
-                            <div><strong className="text-sky-800 font-bold">OD:</strong> Esf: {ord.refraccion.od?.esf || '-'} | Cil: {ord.refraccion.od?.cil || '-'}</div>
-                            <div><strong className="text-sky-800 font-bold">OI:</strong> Esf: {ord.refraccion.oi?.esf || '-'} | Cil: {ord.refraccion.oi?.cil || '-'}</div>
-                          </div>
-                        )}
-                        <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end border-t md:border-t-0 pt-2 md:pt-0">
-                          <span className="text-xs font-extrabold text-slate-800">Total: S/ {ord.total}</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${ord.saldo > 0 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
-                            {ord.saldo > 0 ? `Saldo: S/ ${ord.saldo}` : 'Liquidado'}
-                          </span>
-                        </div>
+                        <div className="space-y-1"><div className="flex items-center space-x-2"><span className="bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded text-[10px] border border-sky-100">{ord.numeroOrden}</span><span className="text-xs text-slate-400 font-medium">{new Date(ord.fechaOrden).toLocaleDateString()}</span></div><p className="text-xs font-bold text-slate-800">{ord.montura || 'Sin montura'} • <span className="text-slate-600 font-normal">{ord.tipoTrabajo}</span></p></div>
+                        <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end border-t md:border-t-0 pt-2 md:pt-0"><span className="text-xs font-extrabold text-slate-800">Total: S/ {ord.total}</span><span className={`text-[10px] font-bold px-2 py-0.5 rounded ${ord.saldo > 0 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>{ord.saldo > 0 ? `Saldo: S/ ${ord.saldo}` : 'Liquidado'}</span></div>
                       </div>
                     ))}
                   </div>
