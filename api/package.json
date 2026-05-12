@@ -1,0 +1,19 @@
+{
+  "name": "optica-api",
+  "version": "1.0.0",
+  "main": "dist/src/functions/api.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && func start"
+  },
+  "dependencies": {
+    "@azure/cosmos": "^4.0.0",
+    "@azure/functions": "^3.0.0",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}
