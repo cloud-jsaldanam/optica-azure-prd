@@ -1,14 +1,12 @@
 {
   "name": "optica-api",
   "version": "1.0.0",
-  "main": "dist/src/functions/api.js",
+  "description": "Capa API Serverless de Negocio",
   "scripts": {
-    "build": "tsc",
-    "start": "npm run build && func start"
+    "build": "tsc"
   },
   "dependencies": {
     "@azure/cosmos": "^4.0.0",
-    "@azure/functions": "^3.0.0",
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
