@@ -15,6 +15,9 @@ const USUARIOS_AUTORIZADOS: Record<string, { pass: string, nombre: string, role:
     "flor": { pass: "47571420", nombre: "Flor", role: "especialista" }
 };
 
+const NOMBRES_MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const NOMBRES_DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
 const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
     const path = context.bindingData?.path || req.params?.path;
 
@@ -71,39 +74,79 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         } catch (e) { context.res = { status: 500, body: { error: e.message } }; return; }
     }
 
-    // ELIMINACIÓN REFORZADA: Soporta borrar una Orden o borrar un Cliente Completo
     if (path === "venta" && req.method === "DELETE") {
         if (sesion.role !== "admin") { context.res = { status: 403, body: { error: "Sin permisos" } }; return; }
-        const id = req.query?.id; // Puede ser ord_... o cli_...
+        const id = req.query?.id;
         try {
             if (id.startsWith("ord_")) {
                 const { resource: doc } = await container.item(id, "orden").read();
                 await container.item(id, "orden").delete();
-                // Si era la última orden, borramos al cliente también
-                const { resources: restantes } = await container.items.query({ query: "SELECT * FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cid", parameters: [{ name: "@id", value: doc.clienteId }] }).fetchAll();
+                const { resources: restantes } = await container.items.query({ query: "SELECT c.id FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cid", parameters: [{ name: "@cid", value: doc.clienteId }] }).fetchAll();
                 if (restantes.length === 0) await container.item(doc.clienteId, "cliente").delete().catch(()=>{});
             } else if (id.startsWith("cli_")) {
-                // BORRADO TOTAL POR DNI (NUKE)
                 const { resources: ordenes } = await container.items.query({ query: "SELECT c.id FROM c WHERE c.tipo = 'orden' AND c.clienteId = @id", parameters: [{ name: "@id", value: id }] }).fetchAll();
                 for (const o of ordenes) { await container.item(o.id, "orden").delete().catch(()=>{}); }
                 await container.item(id, "cliente").delete().catch(()=>{});
             }
-            context.res = { status: 200, body: { mensaje: "Purgado completo" } }; return;
+            context.res = { status: 200, body: { mensaje: "Purgado" } }; return;
         } catch (e) { context.res = { status: 500, body: { error: e.message } }; return; }
     }
 
+    // ==========================================
+    // ENDPOINT: DASHBOARD (Cálculos de meses y días)
+    // ==========================================
     if (path === "dashboard" && req.method === "GET") {
         try {
-            const { resources: ordenes } = await container.items.query("SELECT * FROM c WHERE c.tipo = 'orden'").fetchAll();
-            const sorted = [...ordenes].sort((a, b) => new Date(b.fechaOrden).getTime() - new Date(a.fechaOrden).getTime());
-            const topVentas = sorted.slice(0, 5).map(o => ({ numeroOrden: o.numeroOrden, total: Number(o.total), fechaOrden: o.fechaOrden }));
-            const counts: any = {};
-            ordenes.forEach(o => counts[o.clienteId] = (counts[o.clienteId] || 0) + 1);
-            const topCli = await Promise.all(Object.entries(counts).sort((a:any, b:any) => b[1] - a[1]).slice(0, 5).map(async ([cid, count]) => {
-                const { resource: c } = await container.item(cid, "cliente").read();
-                return { nombres: c?.nombres || cid, cantidadComprada: count };
+            // Extraemos todas las órdenes sin filtros SQL complejos para eludir bloqueos de índices
+            const { resources: todasOrdenes } = await container.items.query("SELECT * FROM c WHERE c.tipo = 'orden'").fetchAll();
+            const ordenesValidas = todasOrdenes || [];
+
+            // 1. TOP VENTAS DETALLADO: Traer nombre del paciente
+            const sorted = [...ordenesValidas].sort((a, b) => new Date(b.fechaOrden).getTime() - new Date(a.fechaOrden).getTime());
+            const topRaw = sorted.slice(0, 5);
+            const topVentasDetallado = await Promise.all(topRaw.map(async (o) => {
+                try {
+                    const { resource: c } = await container.item(o.clienteId, "cliente").read();
+                    // Creamos la etiqueta detallada: "ORD-1234 | Juan Pérez"
+                    return { label: `${o.numeroOrden} | ${c?.nombres || 'Cliente'}`, total: Number(o.total) };
+                } catch (e) { return { label: `${o.numeroOrden}`, total: Number(o.total) }; }
             }));
-            context.res = { status: 200, body: { topVentas, topClientes: topCli } }; return;
+
+            // 2. ANALÍTICA MENSUAL (Historial S/)
+            const countsMeses: Record<string, number> = {};
+            // Inicializar últimos 6 meses para que no salgan vacíos
+            for(let i=5; i>=0; i--) {
+                const d = new Date(); d.setMonth(d.getMonth() - i);
+                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
+                countsMeses[key] = 0;
+            }
+            
+            ordenesValidas.forEach(o => {
+                if(!o.fechaOrden) return;
+                const key = o.fechaOrden.substring(0, 7); // YYYY-MM
+                if (countsMeses[key] !== undefined) countsMeses[key] += Number(o.total);
+            });
+
+            const analiticaMensual = Object.entries(countsMeses).sort((a:any, b:any) => a[0].localeCompare(b[0])).map(([key, value]) => ({
+                mes: `${NOMBRES_MESES[Number(key.substring(5))-1]}`,
+                total: value
+            }));
+
+            // 3. ANALÍTICA DÍA DE SEMANA (Flujo Órdenes)
+            const countsDias: Record<number, number> = {1:0, 2:0, 3:0, 4:0, 5:0, 6:0, 0:0}; // Lun a Dom
+            ordenesValidas.forEach(o => {
+                if(!o.fechaOrden) return;
+                const d = new Date(o.fechaOrden);
+                const dayOfWeek = d.getDay(); // 0:Dom, 1:Lun...
+                countsDias[dayOfWeek] += 1;
+            });
+
+            const analiticaDiaria = Object.entries(countsDias).map(([key, value]) => ({
+                dia: NOMBRES_DIAS[Number(key)],
+                cantidad: value
+            }));
+
+            context.res = { status: 200, body: { topVentas: topVentasDetallado, analiticaMensual, analiticaDiaria } }; return;
         } catch (e) { context.res = { status: 500, body: { error: e.message } }; return; }
     }
 };
