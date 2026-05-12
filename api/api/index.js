@@ -46,19 +46,20 @@ const cosmos_1 = require("@azure/cosmos");
 const jwt = __importStar(require("jsonwebtoken"));
 const endpoint = process.env.COSMOS_ENDPOINT || "";
 const key = process.env.COSMOS_KEY || "";
-const JWT_SECRET = process.env.JWT_SECRET || "ClaveSecretaOpticaPrd2026";
+// Constante inyectada directamente en memoria para garantizar consistencia criptográfica
+const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new cosmos_1.CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
 const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         const path = ((_a = context.bindingData) === null || _a === void 0 ? void 0 : _a.path) || ((_b = req.params) === null || _b === void 0 ? void 0 : _b.path);
         // 1. ENDPOINT: LOGIN Y VALIDACIÓN
         if (path === "login" && req.method === "POST") {
             try {
                 const { usuario, password } = req.body || {};
                 if (usuario === "admin" && password === "OpticaSegura2026*") {
-                    const token = jwt.sign({ user: "admin", role: "optometra" }, JWT_SECRET, { expiresIn: "12h" });
+                    const token = jwt.sign({ user: "admin", role: "optometra", ts: Date.now() }, JWT_SECRET_CORE, { expiresIn: "24h" });
                     context.res = {
                         status: 200,
                         body: { token },
@@ -66,118 +67,123 @@ const httpTrigger = function (context, req) {
                     };
                     return;
                 }
-                context.res = {
-                    status: 401,
-                    body: { error: "Credenciales de acceso no válidas" },
-                    headers: { "Content-Type": "application/json" }
-                };
+                context.res = { status: 401, body: { error: "Credenciales de acceso no válidas" } };
             }
             catch (err) {
-                context.res = {
-                    status: 500,
-                    body: { error: "Fallo transaccional durante la autenticación" },
-                    headers: { "Content-Type": "application/json" }
-                };
+                context.res = { status: 500, body: { error: "Fallo transaccional durante la autenticación" } };
             }
             return;
         }
         // CAPA MIDDLEWARE: INTERCEPCIÓN Y VALIDACIÓN DE TOKENS JWT
         const authHeader = (_c = req.headers) === null || _c === void 0 ? void 0 : _c.authorization;
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            context.res = {
-                status: 401,
-                body: { error: "Acceso denegado. Se requiere un token de sesión activo." },
-                headers: { "Content-Type": "application/json" }
-            };
+            context.res = { status: 401, body: { error: "Acceso denegado. Se requiere un token de sesión activo." } };
             return;
         }
         const token = authHeader.split(" ")[1];
         try {
-            jwt.verify(token, JWT_SECRET);
+            // Validación estricta contra la misma firma en memoria
+            jwt.verify(token, JWT_SECRET_CORE);
         }
         catch (err) {
-            context.res = {
-                status: 401,
-                body: { error: "Firma de sesión expirada o corrupta." },
-                headers: { "Content-Type": "application/json" }
-            };
+            context.res = { status: 401, body: { error: "Firma de sesión expirada o corrupta." } };
             return;
         }
-        // 2. ENDPOINT: RECUPERACIÓN DE HISTORIAL DE CLIENTE
+        // 2. ENDPOINT: RECUPERACIÓN DE HISTORIAL DE CLIENTE (MÓDULO 2)
         if (path === "cliente" && req.method === "GET") {
-            const dni = (_d = req.query) === null || _d === void 0 ? void 0 : _d.dni;
+            const dni = (_e = (_d = req.query) === null || _d === void 0 ? void 0 : _d.dni) === null || _e === void 0 ? void 0 : _e.trim();
             if (!dni) {
                 context.res = { status: 400, body: { error: "Parámetro de identificación requerido" } };
                 return;
             }
             try {
                 const { resource: cliente } = yield container.item(`cli_${dni}`, "cliente").read();
-                if (!cliente) {
-                    context.res = { status: 404, body: { error: "Expediente clínico no localizado" } };
-                    return;
-                }
                 const querySpec = {
                     query: "SELECT * FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cliId ORDER BY c.fechaOrden DESC",
                     parameters: [{ name: "@cliId", value: `cli_${dni}` }]
                 };
                 const { resources: ordenes } = yield container.items.query(querySpec).fetchAll();
-                context.res = { status: 200, body: { cliente, ordenes } };
+                // Si no existe el cliente pero sí se hace la búsqueda, devolvemos 200 con arrays vacíos para no quebrar la UI
+                context.res = {
+                    status: 200,
+                    body: {
+                        cliente: cliente || null,
+                        ordenes: ordenes || []
+                    }
+                };
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: "Fallo de conexión con el repositorio de datos" } };
+                context.res = { status: 500, body: { error: "Fallo de conexión con el repositorio Cosmos DB" } };
                 return;
             }
         }
-        // 3. ENDPOINT: PERSISTENCIA TRANSACCIONAL DE VENTAS
+        // 3. ENDPOINT: PERSISTENCIA TRANSACCIONAL DE VENTAS (MÓDULO 1)
         if (path === "venta" && req.method === "POST") {
             const payload = req.body || {};
-            const { dni, nombres, refraccion, aCuenta, saldo, montura, tipoTrabajo, tratado, fechaEntrega } = payload;
+            const { dni, nombres, refraccion, aCuenta, saldo, montura, tipoTrabajo, tratado, fechaEntrega, total } = payload;
             if (!dni || !nombres) {
                 context.res = { status: 400, body: { error: "Los datos primarios del paciente son obligatorios" } };
                 return;
             }
             const timestamp = new Date().toISOString();
             try {
+                // Upsert del Cliente
                 const clienteObj = {
-                    id: `cli_${dni}`, tipo: "cliente", dni, nombres,
-                    direccion: payload.direccion || "", telefono: payload.telefono || "", fechaRegistro: timestamp
+                    id: `cli_${dni}`,
+                    tipo: "cliente",
+                    dni,
+                    nombres,
+                    direccion: payload.direccion || "",
+                    telefono: payload.telefono || "",
+                    fechaRegistro: timestamp
                 };
                 yield container.items.upsert(clienteObj);
+                // Creación de la Orden
                 const numeroOrden = `ORD-${Date.now().toString().slice(-6)}`;
                 const ordenObj = {
-                    id: `ord_${numeroOrden}`, tipo: "orden", numeroOrden, fechaOrden: timestamp, clienteId: `cli_${dni}`,
-                    montura: montura || "", tipoTrabajo: tipoTrabajo || "", tratado: tratado || "", refraccion,
-                    aCuenta: Number(aCuenta || 0), saldo: Number(saldo || 0), total: Number(aCuenta || 0) + Number(saldo || 0),
-                    fechaEntrega: fechaEntrega || "", vendedor: "Admin"
+                    id: `ord_${numeroOrden}`,
+                    tipo: "orden",
+                    numeroOrden,
+                    fechaOrden: timestamp,
+                    clienteId: `cli_${dni}`,
+                    montura: montura || "",
+                    tipoTrabajo: tipoTrabajo || "",
+                    tratado: tratado || "",
+                    refraccion: refraccion || null,
+                    aCuenta: Number(aCuenta || 0),
+                    saldo: Number(saldo || 0),
+                    total: Number(total || 0),
+                    fechaEntrega: fechaEntrega || "",
+                    vendedor: "Admin"
                 };
                 yield container.items.create(ordenObj);
-                context.res = { status: 201, body: { mensaje: "Venta registrada exitosamente", numeroOrden, cliente: clienteObj } };
+                context.res = {
+                    status: 201,
+                    body: { mensaje: "Venta registrada exitosamente", numeroOrden, cliente: clienteObj }
+                };
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: "Saturación del canal de escritura en base de datos" } };
+                context.res = { status: 500, body: { error: "Error de persistencia al escribir en la base de datos" } };
                 return;
             }
         }
-        // 4. ENDPOINT: TELEMETRÍA DE NEGOCIO Y DASHBOARD
+        // 4. ENDPOINT: DASHBOARD
         if (path === "dashboard" && req.method === "GET") {
             try {
-                const now = new Date();
-                const primerDiaMes = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
                 const queryVentas = {
-                    query: "SELECT TOP 5 c.numeroOrden, c.total, c.fechaOrden FROM c WHERE c.tipo = 'orden' AND c.fechaOrden >= @inicioMes ORDER BY c.total DESC",
-                    parameters: [{ name: "@inicioMes", value: primerDiaMes }]
+                    query: "SELECT TOP 5 c.numeroOrden, c.total, c.fechaOrden FROM c WHERE c.tipo = 'orden' ORDER BY c.fechaOrden DESC"
                 };
                 const { resources: topVentas } = yield container.items.query(queryVentas).fetchAll();
                 const queryClientes = {
-                    query: "SELECT TOP 5 c.clienteId, COUNT(1) as cantidadComprada, SUM(c.total) as volumenTotal FROM c WHERE c.tipo = 'orden' GROUP BY c.clienteId ORDER BY COUNT(1) DESC"
+                    query: "SELECT TOP 5 c.clienteId, COUNT(1) as cantidadComprada FROM c WHERE c.tipo = 'orden' GROUP BY c.clienteId ORDER BY COUNT(1) DESC"
                 };
                 const { resources: topClientesRaw } = yield container.items.query(queryClientes).fetchAll();
                 const topClientes = yield Promise.all(topClientesRaw.map((item) => __awaiter(this, void 0, void 0, function* () {
                     try {
                         const { resource: cli } = yield container.item(item.clienteId, "cliente").read();
-                        return { nombres: cli ? cli.nombres : item.clienteId, cantidadComprada: item.cantidadComprada };
+                        return { nombres: (cli === null || cli === void 0 ? void 0 : cli.nombres) || item.clienteId, cantidadComprada: item.cantidadComprada };
                     }
                     catch (e) {
                         return { nombres: item.clienteId, cantidadComprada: item.cantidadComprada };
@@ -191,7 +197,7 @@ const httpTrigger = function (context, req) {
                 return;
             }
         }
-        context.res = { status: 404, body: { error: "Firma de API solicitada inexistente en el catálogo de rutas" } };
+        context.res = { status: 404, body: { error: "Endpoint no mapeado en el enrutador" } };
     });
 };
 exports.default = httpTrigger;
