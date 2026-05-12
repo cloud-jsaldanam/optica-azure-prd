@@ -39,9 +39,7 @@ export default function App() {
   const [cercaAdd, setCercaAdd] = useState('');
   const [cargandoVenta, setCargandoVenta] = useState(false);
 
-  // =========================================================================
-  // CORRECCIÓN CRÍTICA: Declaración de variables de carga para evitar ReferenceError
-  // =========================================================================
+  // Directorio y Búsqueda (Módulo 2)
   const [listaDirectorio, setListaDirectorio] = useState([]);
   const [cargandoDirectorio, setCargandoDirectorio] = useState(false);
   const [busquedaDni, setBusquedaDni] = useState('');
@@ -212,7 +210,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Pestañas Modulares rediseñadas con estilo visual ultra-intuitivo */}
+        {/* Pestañas Modulares estilizadas e intuitivas */}
         <div className="flex bg-slate-200 p-1.5 rounded-xl border shadow-inner mb-6 max-w-md mx-auto">
           <button onClick={() => {setTabActiva('registro'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'registro' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📋 Módulo 1: Registrar Venta</button>
           <button onClick={() => {setTabActiva('historial'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'historial' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>🔍 Módulo 2: Auditoría</button>
@@ -273,7 +271,8 @@ export default function App() {
         {/* MÓDULO 2: AUDITORÍA CLÍNICA DE HISTORIALES */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm sticky top-24 self-start space-y-4">
+            {/* CORRECCIÓN MÓVIL: Reemplazamos sticky por lg:sticky lg:top-24 para que fluya en el scroll del teléfono */}
+            <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm lg:sticky lg:top-24 self-start space-y-4">
               <div className="border-b pb-3">
                 <h3 className="text-xs font-extrabold text-slate-700 mb-2">DIRECTORIO GLOBAL</h3>
                 <button onClick={cargarDirectorio} disabled={cargandoDirectorio} className="w-full bg-slate-100 hover:bg-sky-50 text-sky-700 border border-slate-200 font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center transition-all shadow-sm disabled:opacity-50">
