@@ -49,39 +49,44 @@ const key = process.env.COSMOS_KEY || "";
 const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new cosmos_1.CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
-// Catálogo multi-usuario para trazabilidad en clínica
+// Catálogo Multi-Usuario con Control de Roles (RBAC)
 const USUARIOS_AUTORIZADOS = {
-    "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal" },
-    "optometra1": { pass: "ClinicaLima2026*", nombre: "Optómetra - Módulo 1" },
-    "optometra2": { pass: "ClinicaLima2026*", nombre: "Optómetra - Módulo 2" }
+    "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal", role: "admin" },
+    "magaly": { pass: "MagalyPrd2026*", nombre: "Magaly", role: "admin" },
+    "flor": { pass: "FlorPrd2026*", nombre: "Flor", role: "especialista" }
 };
 const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const path = ((_a = context.bindingData) === null || _a === void 0 ? void 0 : _a.path) || ((_b = req.params) === null || _b === void 0 ? void 0 : _b.path);
-        // 1. ENDPOINT: AUTENTICACIÓN MULTI-USUARIO
+        // 1. ENDPOINT: AUTENTICACIÓN
         if (path === "login" && req.method === "POST") {
             try {
                 const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-                const usuario = (_c = payload.usuario) === null || _c === void 0 ? void 0 : _c.trim();
-                const password = (_d = payload.password) === null || _d === void 0 ? void 0 : _d.trim();
-                const userMeta = USUARIOS_AUTORIZADOS[usuario];
-                if (userMeta && password === userMeta.pass) {
-                    const token = jwt.sign({ user: usuario, nombre: userMeta.nombre, role: "especialista", ts: Date.now() }, JWT_SECRET_CORE, { expiresIn: "24h" });
-                    context.res = { status: 200, body: { token, usuario: userMeta.nombre }, headers: { "Content-Type": "application/json" } };
+                // Soportamos ingreso en minúsculas para mayor robustez
+                const usuarioInput = (_c = payload.usuario) === null || _c === void 0 ? void 0 : _c.trim().toLowerCase();
+                const passwordInput = (_d = payload.password) === null || _d === void 0 ? void 0 : _d.trim();
+                const userMeta = USUARIOS_AUTORIZADOS[usuarioInput];
+                if (userMeta && passwordInput === userMeta.pass) {
+                    const token = jwt.sign({ user: usuarioInput, nombre: userMeta.nombre, role: userMeta.role, ts: Date.now() }, JWT_SECRET_CORE, { expiresIn: "24h" });
+                    context.res = {
+                        status: 200,
+                        body: { token, usuario: userMeta.nombre, role: userMeta.role },
+                        headers: { "Content-Type": "application/json" }
+                    };
                     return;
                 }
-                context.res = { status: 401, body: { error: "Credenciales de acceso no autorizadas" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 401, body: { error: "Credenciales de acceso incorrectas" }, headers: { "Content-Type": "application/json" } };
             }
             catch (err) {
                 context.res = { status: 500, body: { error: "Fallo del servidor al procesar la identidad" }, headers: { "Content-Type": "application/json" } };
             }
             return;
         }
-        // MIDDLEWARE DE AUTORIZACIÓN (Prioridad a x-optica-auth)
+        // MIDDLEWARE DE AUTORIZACIÓN SECURE EDGE
         const authHeader = ((_e = req.headers) === null || _e === void 0 ? void 0 : _e['x-optica-auth']) || ((_f = req.headers) === null || _f === void 0 ? void 0 : _f.authorization);
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            context.res = { status: 401, body: { error: "Sesión denegada. Token ausente o formato inválido." }, headers: { "Content-Type": "application/json" } };
+            context.res = { status: 401, body: { error: "Sesión denegada. Token ausente o inválido." }, headers: { "Content-Type": "application/json" } };
             return;
         }
         let sesionActual;
@@ -102,7 +107,7 @@ const httpTrigger = function (context, req) {
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: "Error de lectura en base de datos" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 500, body: { error: "Error de lectura en BD" }, headers: { "Content-Type": "application/json" } };
                 return;
             }
         }
@@ -124,11 +129,11 @@ const httpTrigger = function (context, req) {
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: "Error consultando el repositorio" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 500, body: { error: "Error consultando base de datos" }, headers: { "Content-Type": "application/json" } };
                 return;
             }
         }
-        // 4. ENDPOINT: CREACIÓN DE ORDEN CON TRAZABILIDAD
+        // 4. ENDPOINT: REGISTRO DE VENTA (Traza al usuario activo)
         if (path === "venta" && req.method === "POST") {
             try {
                 const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
@@ -154,7 +159,7 @@ const httpTrigger = function (context, req) {
                     saldo: Number(payload.saldo || 0),
                     total: Number(payload.total || 0),
                     fechaEntrega: payload.fechaEntrega || "",
-                    vendedor: sesionActual.nombre || "Especialista Clínico" // Trazabilidad inyectada
+                    vendedor: sesionActual.nombre || "Especialista" // Deja la firma de seguimiento exacta
                 };
                 yield container.items.create(ordenObj);
                 context.res = { status: 201, body: { mensaje: "Transacción guardada con éxito", numeroOrden, cliente: clienteObj }, headers: { "Content-Type": "application/json" } };
@@ -165,21 +170,30 @@ const httpTrigger = function (context, req) {
                 return;
             }
         }
-        // 5. ENDPOINT: ELIMINACIÓN DE REGISTROS ERRÓNEOS
+        // 5. ENDPOINT: BORRADO SEGURO CON VALIDACIÓN DE ROL
         if (path === "venta" && req.method === "DELETE") {
+            // Validación de seguridad estricta: Solo cuentas con rol 'admin' proceden
+            if (sesionActual.role !== "admin") {
+                context.res = {
+                    status: 403,
+                    body: { error: "Operación denegada: La cuenta actual no posee privilegios de administrador para eliminar registros." },
+                    headers: { "Content-Type": "application/json" }
+                };
+                return;
+            }
             const idOrden = (_k = (_j = req.query) === null || _j === void 0 ? void 0 : _j.id) === null || _k === void 0 ? void 0 : _k.trim();
-            const partitionKey = (_m = (_l = req.query) === null || _l === void 0 ? void 0 : _l.pk) === null || _m === void 0 ? void 0 : _m.trim(); // Requiere el id de partición (tipo)
+            const partitionKey = (_m = (_l = req.query) === null || _l === void 0 ? void 0 : _l.pk) === null || _m === void 0 ? void 0 : _m.trim();
             if (!idOrden) {
-                context.res = { status: 400, body: { error: "Identificador de orden requerido para eliminación" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 400, body: { error: "ID de orden requerido" }, headers: { "Content-Type": "application/json" } };
                 return;
             }
             try {
                 yield container.item(idOrden, partitionKey || "orden").delete();
-                context.res = { status: 200, body: { mensaje: "Registro eliminado de la auditoría exitosamente" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 200, body: { mensaje: "Registro eliminado permanentemente" }, headers: { "Content-Type": "application/json" } };
                 return;
             }
             catch (e) {
-                context.res = { status: 500, body: { error: "No se pudo eliminar el documento de Cosmos DB" }, headers: { "Content-Type": "application/json" } };
+                context.res = { status: 500, body: { error: "Fallo al purgar el documento en Cosmos DB" }, headers: { "Content-Type": "application/json" } };
                 return;
             }
         }
@@ -205,7 +219,7 @@ const httpTrigger = function (context, req) {
                 return;
             }
         }
-        context.res = { status: 404, body: { error: "Firma de API solicitada no implementada" }, headers: { "Content-Type": "application/json" } };
+        context.res = { status: 404, body: { error: "Ruta no implementada" }, headers: { "Content-Type": "application/json" } };
     });
 };
 exports.default = httpTrigger;

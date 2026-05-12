@@ -9,44 +9,49 @@ const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
 
-// Catálogo multi-usuario para trazabilidad en clínica
-const USUARIOS_AUTORIZADOS: Record<string, { pass: string, nombre: string }> = {
-    "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal" },
-    "optometra1": { pass: "ClinicaLima2026*", nombre: "Optómetra - Módulo 1" },
-    "optometra2": { pass: "ClinicaLima2026*", nombre: "Optómetra - Módulo 2" }
+// Catálogo Multi-Usuario con Control de Roles (RBAC)
+const USUARIOS_AUTORIZADOS: Record<string, { pass: string, nombre: string, role: string }> = {
+    "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal", role: "admin" },
+    "magaly": { pass: "MagalyPrd2026*", nombre: "Magaly", role: "admin" },
+    "flor": { pass: "FlorPrd2026*", nombre: "Flor", role: "especialista" }
 };
 
 const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
     const path = context.bindingData?.path || req.params?.path;
 
-    // 1. ENDPOINT: AUTENTICACIÓN MULTI-USUARIO
+    // 1. ENDPOINT: AUTENTICACIÓN
     if (path === "login" && req.method === "POST") {
         try {
             const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-            const usuario = payload.usuario?.trim();
-            const password = payload.password?.trim();
+            // Soportamos ingreso en minúsculas para mayor robustez
+            const usuarioInput = payload.usuario?.trim().toLowerCase();
+            const passwordInput = payload.password?.trim();
 
-            const userMeta = USUARIOS_AUTORIZADOS[usuario];
-            if (userMeta && password === userMeta.pass) {
+            const userMeta = USUARIOS_AUTORIZADOS[usuarioInput];
+            if (userMeta && passwordInput === userMeta.pass) {
                 const token = jwt.sign(
-                    { user: usuario, nombre: userMeta.nombre, role: "especialista", ts: Date.now() }, 
+                    { user: usuarioInput, nombre: userMeta.nombre, role: userMeta.role, ts: Date.now() }, 
                     JWT_SECRET_CORE, 
                     { expiresIn: "24h" }
                 );
-                context.res = { status: 200, body: { token, usuario: userMeta.nombre }, headers: { "Content-Type": "application/json" } };
+                context.res = { 
+                    status: 200, 
+                    body: { token, usuario: userMeta.nombre, role: userMeta.role }, 
+                    headers: { "Content-Type": "application/json" } 
+                };
                 return;
             }
-            context.res = { status: 401, body: { error: "Credenciales de acceso no autorizadas" }, headers: { "Content-Type": "application/json" } };
+            context.res = { status: 401, body: { error: "Credenciales de acceso incorrectas" }, headers: { "Content-Type": "application/json" } };
         } catch (err) { 
             context.res = { status: 500, body: { error: "Fallo del servidor al procesar la identidad" }, headers: { "Content-Type": "application/json" } }; 
         }
         return;
     }
 
-    // MIDDLEWARE DE AUTORIZACIÓN (Prioridad a x-optica-auth)
+    // MIDDLEWARE DE AUTORIZACIÓN SECURE EDGE
     const authHeader = req.headers?.['x-optica-auth'] || req.headers?.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        context.res = { status: 401, body: { error: "Sesión denegada. Token ausente o formato inválido." }, headers: { "Content-Type": "application/json" } }; 
+        context.res = { status: 401, body: { error: "Sesión denegada. Token ausente o inválido." }, headers: { "Content-Type": "application/json" } }; 
         return;
     }
 
@@ -65,7 +70,7 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
                 .query("SELECT c.dni, c.nombres, c.telefono, c.direccion FROM c WHERE c.tipo = 'cliente' ORDER BY c.nombres ASC")
                 .fetchAll();
             context.res = { status: 200, body: { clientes }, headers: { "Content-Type": "application/json" } }; return;
-        } catch (e) { context.res = { status: 500, body: { error: "Error de lectura en base de datos" }, headers: { "Content-Type": "application/json" } }; return; }
+        } catch (e) { context.res = { status: 500, body: { error: "Error de lectura en BD" }, headers: { "Content-Type": "application/json" } }; return; }
     }
 
     // 3. ENDPOINT: CONSULTA DE EXPEDIENTE
@@ -80,10 +85,10 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
                     parameters: [{ name: "@cliId", value: `cli_${dni}` }]
                 }).fetchAll();
             context.res = { status: 200, body: { cliente: cliente || null, ordenes: ordenes || [] }, headers: { "Content-Type": "application/json" } }; return;
-        } catch (e) { context.res = { status: 500, body: { error: "Error consultando el repositorio" }, headers: { "Content-Type": "application/json" } }; return; }
+        } catch (e) { context.res = { status: 500, body: { error: "Error consultando base de datos" }, headers: { "Content-Type": "application/json" } }; return; }
     }
 
-    // 4. ENDPOINT: CREACIÓN DE ORDEN CON TRAZABILIDAD
+    // 4. ENDPOINT: REGISTRO DE VENTA (Traza al usuario activo)
     if (path === "venta" && req.method === "POST") {
         try {
             const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
@@ -108,22 +113,35 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
                 saldo: Number(payload.saldo || 0),
                 total: Number(payload.total || 0), 
                 fechaEntrega: payload.fechaEntrega || "", 
-                vendedor: sesionActual.nombre || "Especialista Clínico" // Trazabilidad inyectada
+                vendedor: sesionActual.nombre || "Especialista" // Deja la firma de seguimiento exacta
             };
             await container.items.create(ordenObj);
             context.res = { status: 201, body: { mensaje: "Transacción guardada con éxito", numeroOrden, cliente: clienteObj }, headers: { "Content-Type": "application/json" } }; return;
         } catch (e) { context.res = { status: 500, body: { error: "Error de escritura en Cosmos DB" }, headers: { "Content-Type": "application/json" } }; return; }
     }
 
-    // 5. ENDPOINT: ELIMINACIÓN DE REGISTROS ERRÓNEOS
+    // 5. ENDPOINT: BORRADO SEGURO CON VALIDACIÓN DE ROL
     if (path === "venta" && req.method === "DELETE") {
+        // Validación de seguridad estricta: Solo cuentas con rol 'admin' proceden
+        if (sesionActual.role !== "admin") {
+            context.res = { 
+                status: 403, 
+                body: { error: "Operación denegada: La cuenta actual no posee privilegios de administrador para eliminar registros." }, 
+                headers: { "Content-Type": "application/json" } 
+            }; 
+            return;
+        }
+
         const idOrden = req.query?.id?.trim();
-        const partitionKey = req.query?.pk?.trim(); // Requiere el id de partición (tipo)
-        if (!idOrden) { context.res = { status: 400, body: { error: "Identificador de orden requerido para eliminación" }, headers: { "Content-Type": "application/json" } }; return; }
+        const partitionKey = req.query?.pk?.trim();
+        if (!idOrden) { context.res = { status: 400, body: { error: "ID de orden requerido" }, headers: { "Content-Type": "application/json" } }; return; }
+        
         try {
             await container.item(idOrden, partitionKey || "orden").delete();
-            context.res = { status: 200, body: { mensaje: "Registro eliminado de la auditoría exitosamente" }, headers: { "Content-Type": "application/json" } }; return;
-        } catch (e) { context.res = { status: 500, body: { error: "No se pudo eliminar el documento de Cosmos DB" }, headers: { "Content-Type": "application/json" } }; return; }
+            context.res = { status: 200, body: { mensaje: "Registro eliminado permanentemente" }, headers: { "Content-Type": "application/json" } }; return;
+        } catch (e) { 
+            context.res = { status: 500, body: { error: "Fallo al purgar el documento en Cosmos DB" }, headers: { "Content-Type": "application/json" } }; return; 
+        }
     }
 
     // 6. ENDPOINT: DASHBOARD
@@ -141,7 +159,7 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         } catch (error) { context.res = { status: 500, body: { error: "Fallo en motor analítico" }, headers: { "Content-Type": "application/json" } }; return; }
     }
     
-    context.res = { status: 404, body: { error: "Firma de API solicitada no implementada" }, headers: { "Content-Type": "application/json" } };
+    context.res = { status: 404, body: { error: "Ruta no implementada" }, headers: { "Content-Type": "application/json" } };
 };
 
 export default httpTrigger;
