@@ -5,8 +5,7 @@
     "sourceMap": false,
     "strict": false,
     "moduleResolution": "node",
-    "esModuleInterop": true,
-    "ignoreDeprecations": "6.0"
+    "esModuleInterop": true
   },
   "include": [
     "./**/*.ts"
