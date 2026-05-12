@@ -9,7 +9,7 @@ const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
 
-// Catálogo Multi-Usuario con la clave de Flor actualizada a "47571420"
+// Catálogo Multi-Usuario interno estandarizado en minúsculas
 const USUARIOS_AUTORIZADOS: Record<string, { pass: string, nombre: string, role: string }> = {
     "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal", role: "admin" },
     "magaly": { pass: "MagalyPrd2026*", nombre: "Magaly", role: "admin" },
@@ -19,10 +19,11 @@ const USUARIOS_AUTORIZADOS: Record<string, { pass: string, nombre: string, role:
 const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
     const path = context.bindingData?.path || req.params?.path;
 
-    // 1. ENDPOINT: AUTENTICACIÓN
+    // 1. ENDPOINT: AUTENTICACIÓN FLEXIBLE (Soporta mayúsculas móviles nativamente)
     if (path === "login" && req.method === "POST") {
         try {
             const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+            // Convertimos la entrada a minúsculas automáticamente para eludir la capitalización móvil
             const usuarioInput = payload.usuario?.trim().toLowerCase();
             const passwordInput = payload.password?.trim();
 
@@ -139,10 +140,7 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
 
             const clienteId = ordenDoc.clienteId;
 
-            // Purgar documento de orden
             await container.item(idOrden, "orden").delete();
-
-            // Purgar documento de cliente del directorio global
             await container.item(clienteId, "cliente").delete();
 
             context.res = { 

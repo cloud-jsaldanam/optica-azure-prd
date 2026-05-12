@@ -75,10 +75,21 @@ export default function App() {
       const res = await fetchSeguro('/api/dashboard');
       if (res.ok) {
         const data = await res.json();
-        if (data.topVentas?.length) setDataVentas({ labels: data.topVentas.map(v => v.numeroOrden), datasets: [{ label: 'Monto (S/)', data: data.topVentas.map(v => v.total), backgroundColor: '#0284c7' }] });
-        if (data.topClientes?.length) setDataClientes({ labels: data.topClientes.map(c => c.nombres?.split(' ')[0] || 'Cliente'), datasets: [{ label: 'Órdenes', data: data.topClientes.map(c => c.cantidadComprada), backgroundColor: '#059669' }] });
+        if (data.topVentas?.length) {
+          setDataVentas({ 
+            labels: data.topVentas.map(v => v.numeroOrden), 
+            datasets: [{ label: 'Monto (S/)', data: data.topVentas.map(v => Number(v.total) || 0), backgroundColor: '#0284c7' }] 
+          });
+        } else { setDataVentas(null); }
+
+        if (data.topClientes?.length) {
+          setDataClientes({ 
+            labels: data.topClientes.map(c => c.nombres?.split(' ')[0] || 'Cliente'), 
+            datasets: [{ label: 'Órdenes', data: data.topClientes.map(c => Number(c.cantidadComprada) || 0), backgroundColor: '#059669' }] 
+          });
+        } else { setDataClientes(null); }
       }
-    } catch (err) { }
+    } catch (err) { console.error(err); }
   };
 
   const cargarDirectorioGlobal = async () => {
@@ -86,12 +97,18 @@ export default function App() {
     setCargandoDirectorio(true);
     try {
       const res = await fetchSeguro('/api/clientes');
-      if (res.ok) setListaDirectorio((await res.json()).clientes || []);
+      if (res.ok) {
+        const data = await res.json();
+        setListaDirectorio(data.clientes || []);
+      }
     } catch (err) { } finally { setCargandoDirectorio(false); }
   };
 
   useEffect(() => { 
-    if (token) { cargarDashboard(); if (tabActiva === 'historial') cargarDirectorioGlobal(); } 
+    if (token) { 
+      cargarDashboard(); 
+      if (tabActiva === 'historial') cargarDirectorioGlobal(); 
+    } 
   }, [token, tabActiva]);
 
   const handleLogin = async (e) => {
@@ -106,7 +123,7 @@ export default function App() {
         setToken(data.token); 
         setOperadorActual(data.usuario || 'Especialista');
         setRolActual(data.role || 'especialista');
-        setTimeout(() => cargarDashboard(), 100);
+        setTimeout(() => { cargarDashboard(); cargarDirectorioGlobal(); }, 100);
       } else setErrorLogin(data.error || 'Credenciales incorrectas');
     } catch (err) { setErrorLogin('Fallo de conexión con el servidor.'); } 
     finally { setCargandoLogin(false); }
@@ -138,7 +155,8 @@ export default function App() {
         setMensajeExito(`¡Orden ${data.numeroOrden} procesada exitosamente por ${operadorActual}!`);
         setTotal(''); setACuenta(''); setMontura(''); setTipoTrabajo(''); setTratado(''); setFechaEntrega('');
         setOd({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); setOi({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); setCercaAdd('');
-        cargarDashboard(); if (tabActiva === 'historial') cargarDirectorioGlobal();
+        cargarDashboard(); 
+        cargarDirectorioGlobal();
       } else setErrorForm(data.error || 'Fallo al procesar la venta.');
     } catch (err) { setErrorForm(err.message); } finally { setCargandoVenta(false); }
   };
@@ -146,14 +164,16 @@ export default function App() {
   const eliminarOrdenRegistro = async (e, ordId, ordNum) => {
     e.stopPropagation(); 
     setErrorForm(''); setMensajeExito('');
-    if (!window.confirm(`¿Confirmas la eliminación definitiva de la orden ${ordNum} y el expediente del paciente asociado? Esta acción lo purgará del Directorio Global.`)) return;
+    if (!window.confirm(`¿Confirmas la eliminación definitiva de la orden ${ordNum} y el expediente del paciente asociado? Esta acción lo purgará de la base de datos.`)) return;
     try {
       const res = await fetchSeguro(`/api/venta?id=${ordId}`, { method: 'DELETE' });
       if (res.ok) {
-        setMensajeExito(`Orden ${ordNum} y expediente asociado eliminados exitosamente.`);
+        setMensajeExito(`Orden ${ordNum} y expediente purgado exitosamente.`);
         setOrdenesCliente(prev => prev.filter(o => o.id !== ordId));
-        // Forzar recarga del directorio para reflejar el borrado total
-        if (tabActiva === 'historial') cargarDirectorioGlobal();
+        const targetDni = busquedaDni;
+        setListaDirectorio(prev => prev.filter(c => c.dni !== targetDni));
+        setClienteEncontrado(null);
+        setBusquedaDni('');
         cargarDashboard();
       } else {
         const errData = await res.json();
@@ -171,7 +191,11 @@ export default function App() {
         <div className="text-center mb-6"><h2 className="text-2xl font-extrabold text-slate-800">Óptica MV - Portal Clínico</h2><p className="text-xs text-slate-500 mt-1">Acceso Seguro Administrado</p></div>
         {errorLogin && <div className="bg-rose-50 border-l-4 border-rose-600 text-rose-800 p-3 rounded text-xs mb-4 font-medium">{errorLogin}</div>}
         <form onSubmit={handleLogin} className="space-y-4">
-          <div><label className="text-xs font-bold text-slate-600 block mb-1">CUENTA ASIGNADA</label><input type="text" required value={usuario} onChange={(e)=>setUsuario(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="magaly / flor / admin" /></div>
+          <div>
+            <label className="text-xs font-bold text-slate-600 block mb-1">CUENTA ASIGNADA</label>
+            {/* Placeholder actualizado mostrando mayúsculas intuitivas para los operadores */}
+            <input type="text" required value={usuario} onChange={(e)=>setUsuario(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="Magaly / Flor / Admin" />
+          </div>
           <div><label className="text-xs font-bold text-slate-600 block mb-1">CONTRASEÑA</label><input type="password" required value={password} onChange={(e)=>setPassword(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-500" placeholder="••••••••••••" /></div>
           <button type="submit" disabled={cargandoLogin} className="w-full bg-sky-600 hover:bg-sky-700 text-white p-3 rounded-lg font-bold text-sm shadow flex items-center justify-center transition-all disabled:opacity-50">{cargandoLogin ? <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span> : 'Iniciar Sesión'}</button>
         </form>
@@ -183,9 +207,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 pb-12 flex flex-col">
       <header className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm sticky top-0 z-40">
         <div className="flex items-center space-x-3">
-          {/* IDENTIDAD ACTUALIZADA: Óptica MV */}
           <span className="bg-sky-600 text-white font-bold px-2.5 py-1 rounded text-xs animate-pulse">Óptica MV</span>
-          {/* TÍTULO ACTUALIZADO: Sistema de gestión optométrica */}
           <h1 className="font-extrabold text-slate-800 text-base md:text-lg">Sistema de gestión optométrica</h1>
         </div>
         <div className="flex items-center space-x-4">
@@ -196,8 +218,18 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto px-4 mt-6 space-y-6 flex-grow w-full">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-4 rounded-xl border shadow-sm"><h2 className="text-xs font-bold text-slate-400 text-center mb-2 uppercase">Métricas de Ingreso</h2><div className="h-40">{dataVentas ? <Bar data={dataVentas} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} /> : <div className="h-full flex items-center justify-center text-xs text-slate-300 animate-pulse">Cargando métricas...</div>}</div></div>
-          <div className="bg-white p-4 rounded-xl border shadow-sm"><h2 className="text-xs font-bold text-slate-400 text-center mb-2 uppercase">Directorio Activo</h2><div className="h-40">{dataClientes ? <Bar data={dataClientes} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} /> : <div className="h-full flex items-center justify-center text-xs text-slate-300 animate-pulse">Cargando métricas...</div>}</div></div>
+          <div className="bg-white p-4 rounded-xl border shadow-sm">
+            <h2 className="text-xs font-bold text-slate-400 text-center mb-2 uppercase">Métricas de Ingreso (S/)</h2>
+            <div className="h-40">
+              {dataVentas ? <Bar data={dataVentas} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">A la espera de transacciones financieras...</div>}
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-xl border shadow-sm">
+            <h2 className="text-xs font-bold text-slate-400 text-center mb-2 uppercase">Directorio Activo (Órdenes)</h2>
+            <div className="h-40">
+              {dataClientes ? <Bar data={dataClientes} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">A la espera de historiales de pacientes...</div>}
+            </div>
+          </div>
         </div>
 
         <div className="flex border-b border-slate-200 bg-white rounded-t-xl px-4 pt-2">
@@ -261,13 +293,29 @@ export default function App() {
         {/* MÓDULO 2 */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm self-start space-y-3 sticky top-24">
-              <div className="flex justify-between items-center border-b pb-2"><h3 className="text-xs font-extrabold text-slate-700">DIRECTORIO GLOBAL</h3><button onClick={cargarDirectorioGlobal} className="text-[10px] text-sky-600 hover:underline">Refrescar</button></div>
-              {cargandoDirectorio ? <div className="text-center py-6 text-xs text-slate-400 animate-pulse">Cargando base de datos...</div> : listaDirectorio.length === 0 ? <div className="text-center py-6 text-xs text-slate-400">Directorio vacío</div> : (
+            <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm self-start space-y-4 sticky top-24">
+              <div className="flex flex-col space-y-2 border-b pb-3">
+                <h3 className="text-xs font-extrabold text-slate-700">DIRECTORIO GLOBAL</h3>
+                <button 
+                  onClick={cargarDirectorioGlobal} 
+                  disabled={cargandoDirectorio}
+                  className="w-full bg-slate-100 hover:bg-sky-50 text-sky-700 border border-slate-200 hover:border-sky-200 font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center transition-all shadow-sm disabled:opacity-50"
+                >
+                  {cargandoDirectorio ? <span className="animate-spin h-3.5 w-3.5 border-b-2 border-sky-700 rounded-full mr-2"></span> : null}
+                  {cargandoDirectorio ? 'Sincronizando...' : '🔄 Sincronizar Directorio'}
+                </button>
+              </div>
+
+              {cargandoDirectorio ? (
+                <div className="text-center py-8 text-xs text-slate-400 animate-pulse">Cargando base de datos...</div>
+              ) : listaDirectorio.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-400 border border-dashed rounded-lg">Directorio vacío</div>
+              ) : (
                 <div className="divide-y max-h-[450px] overflow-y-auto pr-1">
                   {listaDirectorio.map(cli => (
-                    <div key={cli.dni} onClick={() => seleccionarDesdeDirectorio(cli)} className={`p-2.5 hover:bg-slate-50 cursor-pointer rounded transition-colors ${busquedaDni === cli.dni ? 'bg-sky-50 border-l-4 border-sky-600' : ''}`}>
-                      <p className="text-xs font-bold text-slate-800">{cli.nombres}</p><span className="text-[10px] text-slate-500 font-medium">DNI: {cli.dni}</span>
+                    <div key={cli.dni} onClick={() => seleccionarDesdeDirectorio(cli)} className={`p-3 hover:bg-slate-50 cursor-pointer rounded-lg transition-colors ${busquedaDni === cli.dni ? 'bg-sky-50 border-l-4 border-sky-600' : ''}`}>
+                      <p className="text-xs font-bold text-slate-800">{cli.nombres}</p>
+                      <span className="text-[10px] text-slate-500 font-medium block mt-0.5">DNI: {cli.dni}</span>
                     </div>
                   ))}
                 </div>
@@ -276,7 +324,7 @@ export default function App() {
 
             <div className="lg:col-span-8 bg-white p-5 rounded-b-xl rounded-tl-xl border space-y-6 shadow-sm">
               <form onSubmit={(e)=>{e.preventDefault(); consultarExpediente(busquedaDni);}} className="space-y-2">
-                <label className="text-xs font-extrabold text-slate-700 block">INSPECCIÓN HISTÓRICA POR DNI</label>
+                <label className="text-xs font-extrabold text-slate-700 block">AUDITORÍA HISTÓRICA POR DNI</label>
                 <div className="flex space-x-3"><input type="text" maxLength="8" required value={busquedaDni} onChange={(e)=>setBusquedaDni(e.target.value)} placeholder="Ingrese número de documento..." className="flex-1 p-2.5 border rounded-lg text-sm outline-none focus:border-sky-600" /><button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50">{cargandoBusqueda ? 'Buscando...' : 'Auditar'}</button></div>
                 {estadoBusqueda && <p className="text-xs text-slate-500 font-medium mt-1">{estadoBusqueda}</p>}
               </form>
@@ -309,7 +357,6 @@ export default function App() {
                         <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end border-t md:border-t-0 pt-2 md:pt-0 gap-2">
                           <div className="flex items-center space-x-3">
                             <span className="text-xs font-extrabold text-slate-800">Total: S/ {ord.total}</span>
-                            {/* Oculta automáticamente el botón de borrado si la cuenta es de rol 'especialista' (Flor) */}
                             {rolActual === 'admin' && (
                               <button 
                                 onClick={(e) => eliminarOrdenRegistro(e, ord.id, ord.numeroOrden)}
@@ -377,15 +424,19 @@ export default function App() {
         )}
       </main>
 
-      {/* =========================================================
-          PIE DE PÁGINA PROFESIONAL: Firma del Desarrollador
-          ========================================================= */}
-      <footer className="w-full bg-slate-900 text-slate-500 text-center py-5 mt-12 border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4">
-          <p className="text-xs font-medium tracking-wide">
-            © 2026 Óptica MV Clínico. Todos los derechos reservados.
+      {/* FOOTER CORPORATIVO FINAL CON DIRECCIÓN Y FIRMA */}
+      <footer className="w-full bg-slate-900 text-slate-500 text-center py-6 mt-12 border-t border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 space-y-1.5">
+          <p className="text-xs font-bold text-slate-300 tracking-wide">
+            Óptica MV
           </p>
-          <p className="text-[11px] mt-1.5 font-bold text-slate-400">
+          <p className="text-xs text-slate-400">
+            📍 <span className="text-slate-300">Jr Huancavelica 319 - Lima</span>
+          </p>
+          <p className="text-[11px] text-slate-600 pt-2 border-t border-slate-800/80 max-w-xs mx-auto">
+            © 2026 Todos los derechos reservados.
+          </p>
+          <p className="text-[11px] font-bold text-slate-400">
             Desarrollado por <span className="text-sky-500">Jonathan Saldaña</span>
           </p>
         </div>
