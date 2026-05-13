@@ -14,9 +14,7 @@ export default function App() {
   const [errorLogin, setErrorLogin] = useState('');
   const [cargandoLogin, setCargandoLogin] = useState(false);
 
-  // =========================================================================
-  // NUEVA NAVEGACIÓN: Añadimos 'transacciones' para aislar la tabla del layout
-  // =========================================================================
+  // Navegación modular de 3 vistas
   const [tabActiva, setTabActiva] = useState('registro'); // 'registro', 'transacciones', 'historial'
   const [tabGraficoSecundario, setTabGraficoSecundario] = useState('mensual');
 
@@ -27,7 +25,7 @@ export default function App() {
   const [ventasRecientes, setVentasRecientes] = useState([]);
   const [kpisMes, setKpisMes] = useState({ ingresosTotales: 0, ingresosLiquidos: 0, totalOrdenes: 0 });
 
-  // Paginación nativa en RAM exclusiva para la nueva pestaña de Transacciones
+  // Paginación nativa en RAM para el Módulo de Transacciones
   const [paginaActual, setPaginaActual] = useState(0);
   const registrosPorPagina = 5;
 
@@ -56,6 +54,11 @@ export default function App() {
   const [cargandoBusqueda, setCargandoBusqueda] = useState(false);
   const [estadoBusqueda, setEstadoBusqueda] = useState('');
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
+
+  // =========================================================================
+  // NUEVO ESTADO: Filtro en vivo por Nombres/Apellidos en el Módulo 3
+  // =========================================================================
+  const [filtroDirectorio, setFiltroDirectorio] = useState('');
 
   // Alertas
   const [mensajeExito, setMensajeExito] = useState('');
@@ -183,9 +186,7 @@ export default function App() {
   const handleUpdateOd = (field, val) => setOd(prev => ({ ...prev, [field]: val }));
   const handleUpdateOi = (field, val) => setOi(prev => ({ ...prev, [field]: val }));
 
-  // =========================================================================
-  // ESTÉTICA SIMÉTRICA: Ambas gráficas acopladas rígidamente a h-64
-  // =========================================================================
+  // Configuración simétrica de altura fija para gráficas
   const opcionesElegantes = {
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
@@ -196,8 +197,17 @@ export default function App() {
     elements: { bar: { borderRadius: 4 } }
   };
 
+  // Paginador del Módulo 2
   const totalPaginas = Math.ceil(ventasRecientes.length / registrosPorPagina);
   const ventasPaginadas = ventasRecientes.slice(paginaActual * registrosPorPagina, (paginaActual + 1) * registrosPorPagina);
+
+  // =========================================================================
+  // LÓGICA DE FILTRADO EN RAM: Búsqueda instantánea combinada por Nombres o DNI
+  // =========================================================================
+  const directorioFiltrado = (listaDirectorio || []).filter(c => 
+    (c?.nombres || '').toLowerCase().includes(filtroDirectorio.toLowerCase()) ||
+    (c?.dni || '').includes(filtroDirectorio)
+  );
 
   if (!token) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
@@ -244,12 +254,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* =========================================================================
-            LAYOUT PRINCIPAL SIMÉTRICO: Extraemos la tabla para evitar quiebres
-            ========================================================================= */}
+        {/* LAYOUT PRINCIPAL SIMÉTRICO */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Panel Izquierdo: Gráfico Transaccional fijado a h-64 */}
           <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between">
             <div className="border-b pb-2">
               <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Recientes (S/) | Últimas 10 Órdenes</h2>
@@ -260,7 +266,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Panel Derecho: Analítica de Ventas acoplada perfectamente a h-64 */}
           <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between">
             <div className="space-y-2">
               <div className="flex justify-between items-center border-b pb-2">
@@ -281,9 +286,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* =========================================================================
-            SELECTOR DE 3 MÓDULOS: Integramos la vista dedicada al Libro Transaccional
-            ========================================================================= */}
+        {/* SELECTOR DE 3 MÓDULOS */}
         <div className="flex bg-slate-200 p-1.5 rounded-xl border shadow-inner mb-6 max-w-xl mx-auto mt-8">
           <button onClick={() => {setTabActiva('registro'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'registro' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📋 Módulo 1: Registrar Venta</button>
           <button onClick={() => {setTabActiva('transacciones'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'transacciones' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📒 Módulo 2: Transacciones</button>
@@ -343,9 +346,7 @@ export default function App() {
           </form>
         )}
 
-        {/* =========================================================================
-            MÓDULO 2: LIBRO DE TRANSACCIONES (Aislado a pantalla completa)
-            ========================================================================= */}
+        {/* MÓDULO 2: LIBRO DE TRANSACCIONES */}
         {tabActiva === 'transacciones' && (
           <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-4 max-w-4xl mx-auto">
             <div className="border-b pb-3 flex justify-between items-center">
@@ -397,7 +398,6 @@ export default function App() {
               </table>
             </div>
 
-            {/* Paginador Rígido Aislado */}
             {totalPaginas > 1 && (
               <div className="flex justify-between items-center pt-4 border-t text-xs text-slate-500">
                 <span>Total transacciones indexadas: <strong>{ventasRecientes.length}</strong></span>
@@ -410,7 +410,9 @@ export default function App() {
           </div>
         )}
 
-        {/* MÓDULO 3: AUDITORÍA CLÍNICA (Directorio e Historial) */}
+        {/* =========================================================================
+            MÓDULO 3: AUDITORÍA CLÍNICA (Con inyección de Filtro en Vivo por Nombre)
+            ========================================================================= */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm lg:sticky lg:top-24 self-start space-y-4">
@@ -419,14 +421,28 @@ export default function App() {
                 <button onClick={cargarDirectorio} disabled={cargandoDirectorio} className="w-full bg-slate-100 hover:bg-sky-50 text-sky-700 border border-slate-200 font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center transition-all shadow-sm disabled:opacity-50">
                   {cargandoDirectorio ? '🔄 Sincronizando...' : '🔄 Sincronizar Directorio'}
                 </button>
+                
+                {/* NUEVO FILTRO INTELIGENTE: Búsqueda flexible e instantánea en RAM */}
+                <input 
+                  type="text" 
+                  placeholder="🔍 Filtrar por nombre o DNI..." 
+                  className="w-full p-2 border rounded-lg text-xs outline-none focus:border-sky-600 bg-slate-50 mt-3 font-medium text-slate-700 placeholder:text-slate-400"
+                  value={filtroDirectorio}
+                  onChange={e => setFiltroDirectorio(e.target.value)}
+                />
               </div>
+
               <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                {(listaDirectorio || []).map(c => (
-                  <div key={c?.dni || Math.random()} onClick={()=> {setBusquedaDni(c?.dni || ''); consultarExpediente(c?.dni);}} className={`p-3 rounded-xl hover:bg-sky-50 cursor-pointer flex justify-between items-center group transition-colors ${busquedaDni===(c?.dni)?'bg-sky-50 border-l-4 border-sky-600': 'bg-slate-50'}`}>
-                    <div><p className="text-xs font-bold text-slate-800">{c?.nombres || 'Desconocido'}</p><p className="text-[10px] text-slate-500">{c?.dni || ''}</p></div>
-                    {rolActual === 'admin' && <button onClick={e=>purgarClienteCompleto(e,`cli_${c?.dni}`,c?.nombres)} title="Purgar cliente" className="text-rose-400 hover:text-rose-600 font-bold text-base px-2 opacity-0 group-hover:opacity-100">✕</button>}
-                  </div>
-                ))}
+                {directorioFiltrado.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-slate-400">No se encontraron coincidencias</div>
+                ) : (
+                  directorioFiltrado.map(c => (
+                    <div key={c?.dni || Math.random()} onClick={()=> {setBusquedaDni(c?.dni || ''); consultarExpediente(c?.dni);}} className={`p-3 rounded-xl hover:bg-sky-50 cursor-pointer flex justify-between items-center group transition-colors ${busquedaDni===(c?.dni)?'bg-sky-50 border-l-4 border-sky-600': 'bg-slate-50'}`}>
+                      <div><p className="text-xs font-bold text-slate-800">{c?.nombres || 'Desconocido'}</p><p className="text-[10px] text-slate-500">{c?.dni || ''}</p></div>
+                      {rolActual === 'admin' && <button onClick={e=>purgarClienteCompleto(e,`cli_${c?.dni}`,c?.nombres)} title="Purgar cliente" className="text-rose-400 hover:text-rose-600 font-bold text-base px-2 opacity-0 group-hover:opacity-100">✕</button>}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
