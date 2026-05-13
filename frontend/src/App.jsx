@@ -14,8 +14,10 @@ export default function App() {
   const [errorLogin, setErrorLogin] = useState('');
   const [cargandoLogin, setCargandoLogin] = useState(false);
 
-  // Navegación
-  const [tabActiva, setTabActiva] = useState('registro');
+  // =========================================================================
+  // NUEVA NAVEGACIÓN: Añadimos 'transacciones' para aislar la tabla del layout
+  // =========================================================================
+  const [tabActiva, setTabActiva] = useState('registro'); // 'registro', 'transacciones', 'historial'
   const [tabGraficoSecundario, setTabGraficoSecundario] = useState('mensual');
 
   // Colecciones Analíticas
@@ -25,7 +27,7 @@ export default function App() {
   const [ventasRecientes, setVentasRecientes] = useState([]);
   const [kpisMes, setKpisMes] = useState({ ingresosTotales: 0, ingresosLiquidos: 0, totalOrdenes: 0 });
 
-  // Paginación nativa en RAM
+  // Paginación nativa en RAM exclusiva para la nueva pestaña de Transacciones
   const [paginaActual, setPaginaActual] = useState(0);
   const registrosPorPagina = 5;
 
@@ -45,7 +47,7 @@ export default function App() {
   const [cercaAdd, setCercaAdd] = useState('');
   const [cargandoVenta, setCargandoVenta] = useState(false);
 
-  // Directorio
+  // Directorio y Búsqueda
   const [listaDirectorio, setListaDirectorio] = useState([]);
   const [cargandoDirectorio, setCargandoDirectorio] = useState(false);
   const [busquedaDni, setBusquedaDni] = useState('');
@@ -68,18 +70,14 @@ export default function App() {
     return res;
   };
 
-  // Consumo directo y unificado del servidor
   const cargarDashboard = async () => {
     try {
       const res = await fetchSeguro('/api/dashboard');
       if (res.ok) {
         const d = await res.json();
         
-        // Asignación directa de las 10 ventas inyectadas con saldo y fecha
         const ultimas10 = d.topVentas || [];
         setVentasRecientes(ultimas10);
-
-        // Cabecera alimentada desde el backend garantizando consistencia absoluta
         if (d.kpisMes) setKpisMes(d.kpisMes);
 
         if (ultimas10.length > 0) {
@@ -186,7 +184,7 @@ export default function App() {
   const handleUpdateOi = (field, val) => setOi(prev => ({ ...prev, [field]: val }));
 
   // =========================================================================
-  // ESTÉTICA PREMIUM: Bordes redondeados y densidad compacta para evitar vacíos
+  // ESTÉTICA SIMÉTRICA: Ambas gráficas acopladas rígidamente a h-64
   // =========================================================================
   const opcionesElegantes = {
     maintainAspectRatio: false,
@@ -246,78 +244,24 @@ export default function App() {
           </div>
         </div>
 
-        {/* ESTRUCTURA PRINCIPAL */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* =========================================================================
+            LAYOUT PRINCIPAL SIMÉTRICO: Extraemos la tabla para evitar quiebres
+            ========================================================================= */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* Columna Izquierda: Gráfico + Listado estricto de 10 nodos */}
-          <div className="lg:col-span-7 space-y-6">
-            
-            <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col">
-              <h2 className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">Recientes (S/) | Últimas 10 Órdenes</h2>
-              <div className="h-44">
-                {dataTopVentas ? <Bar data={dataTopVentas} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Sin datos transaccionales</div>}
-              </div>
+          {/* Panel Izquierdo: Gráfico Transaccional fijado a h-64 */}
+          <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between">
+            <div className="border-b pb-2">
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Recientes (S/) | Últimas 10 Órdenes</h2>
+              <p className="text-[11px] text-slate-400 font-medium mt-0.5">Avance de recaudación por paciente en las últimas atenciones.</p>
             </div>
-
-            {/* TABLA TRANSACCIONAL NATIVA */}
-            <div className="bg-white p-4 rounded-xl border shadow-sm space-y-3">
-              <div className="border-b pb-2">
-                <h3 className="text-xs font-bold text-slate-700 uppercase">Detalle de Últimas Transacciones</h3>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 text-[10px] text-slate-400 font-bold border-b uppercase">
-                      <th className="p-2">Identificador</th>
-                      <th className="p-2">Ingreso Bruto</th>
-                      <th className="p-2 text-right">Estado Financiero</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-xs divide-y">
-                    {ventasPaginadas.length === 0 ? (
-                      <tr><td colSpan="3" className="p-4 text-center text-slate-400 text-xs">No hay registros recientes disponibles</td></tr>
-                    ) : (
-                      ventasPaginadas.map((v, i) => {
-                        const partes = v.label ? v.label.split('|') : ['ORD', 'Paciente'];
-                        const numOrden = partes[0].trim();
-                        const nombreCli = partes[1] ? partes[1].trim() : 'Paciente';
-                        // Reacción fiel y exacta a la inyección de saldo del backend
-                        const esDeuda = v.saldo && Number(v.saldo) > 0;
-                        return (
-                          <tr key={i} className="hover:bg-slate-50 transition-colors">
-                            <td className="p-2">
-                              <span className="font-bold text-sky-700 block">{numOrden}</span>
-                              <span className="text-[10px] text-slate-500 font-medium">{nombreCli}</span>
-                            </td>
-                            <td className="p-2 font-extrabold text-slate-800">S/ {v.total}</td>
-                            <td className="p-2 text-right">
-                              <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase ${esDeuda ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'}`}>
-                                {esDeuda ? 'Pendiente' : 'Liquidado'}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {totalPaginas > 1 && (
-                <div className="flex justify-between items-center pt-2 border-t text-xs text-slate-500">
-                  <span>Mostrando bloque <strong>{paginaActual + 1}</strong> de {totalPaginas}</span>
-                  <div className="flex space-x-1">
-                    <button onClick={() => setPaginaActual(prev => Math.max(prev - 1, 0))} disabled={paginaActual === 0} className="px-2.5 py-1 rounded border bg-white hover:bg-slate-100 disabled:opacity-30 font-bold transition-all">◀</button>
-                    <button onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas - 1))} disabled={paginaActual >= totalPaginas - 1} className="px-2.5 py-1 rounded border bg-white hover:bg-slate-100 disabled:opacity-30 font-bold transition-all">▶</button>
-                  </div>
-                </div>
-              )}
+            <div className="h-64 mt-4">
+              {dataTopVentas ? <Bar data={dataTopVentas} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Sin datos transaccionales</div>}
             </div>
           </div>
 
-          {/* Columna Derecha: Contenedor optimizado a h-52 para perfecto balance vertical */}
-          <div className="lg:col-span-5 bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between">
+          {/* Panel Derecho: Analítica de Ventas acoplada perfectamente a h-64 */}
+          <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between">
             <div className="space-y-2">
               <div className="flex justify-between items-center border-b pb-2">
                 <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Analítica de Ventas</h2>
@@ -330,18 +274,20 @@ export default function App() {
                 {tabGraficoSecundario === 'mensual' ? 'Evolución de recaudación financiera por periodo mensual.' : 'Cierre de ventas acumulado por días de la semana.'}
               </p>
             </div>
-
-            <div className="h-52 mt-4">
+            <div className="h-64 mt-4">
               {tabGraficoSecundario === 'mensual' && (dataMensual ? <Bar data={dataMensual} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando métricas...</div>)}
               {tabGraficoSecundario === 'diario' && (dataDiaria ? <Bar data={dataDiaria} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando métricas...</div>)}
             </div>
           </div>
         </div>
 
-        {/* Pestañas Modulares */}
-        <div className="flex bg-slate-200 p-1.5 rounded-xl border shadow-inner mb-6 max-w-md mx-auto mt-6">
+        {/* =========================================================================
+            SELECTOR DE 3 MÓDULOS: Integramos la vista dedicada al Libro Transaccional
+            ========================================================================= */}
+        <div className="flex bg-slate-200 p-1.5 rounded-xl border shadow-inner mb-6 max-w-xl mx-auto mt-8">
           <button onClick={() => {setTabActiva('registro'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'registro' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📋 Módulo 1: Registrar Venta</button>
-          <button onClick={() => {setTabActiva('historial'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'historial' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>🔍 Módulo 2: Auditoría</button>
+          <button onClick={() => {setTabActiva('transacciones'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'transacciones' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📒 Módulo 2: Transacciones</button>
+          <button onClick={() => {setTabActiva('historial'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'historial' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>🔍 Módulo 3: Auditoría</button>
         </div>
 
         {mensajeExito && <div className="bg-emerald-500 text-white p-3 rounded-xl text-center font-bold text-sm animate-fade-in">{mensajeExito}</div>}
@@ -397,7 +343,74 @@ export default function App() {
           </form>
         )}
 
-        {/* MÓDULO 2: AUDITORÍA CLÍNICA */}
+        {/* =========================================================================
+            MÓDULO 2: LIBRO DE TRANSACCIONES (Aislado a pantalla completa)
+            ========================================================================= */}
+        {tabActiva === 'transacciones' && (
+          <div className="bg-white p-6 rounded-2xl border shadow-sm space-y-4 max-w-4xl mx-auto">
+            <div className="border-b pb-3 flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 uppercase">Libro Transaccional Paginado</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Auditoría en crudo de los últimos 10 expedientes emitidos.</p>
+              </div>
+              <span className="bg-slate-100 text-slate-600 font-extrabold text-[10px] px-2.5 py-1 rounded border">
+                Página {paginaActual + 1} de {totalPaginas || 1}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-[10px] text-slate-400 font-bold border-b uppercase">
+                    <th className="p-3">Expediente Clínico</th>
+                    <th className="p-3">Ingreso Bruto</th>
+                    <th className="p-3 text-right">Estado Financiero</th>
+                  </tr>
+                </thead>
+                <tbody className="text-xs divide-y">
+                  {ventasPaginadas.length === 0 ? (
+                    <tr><td colSpan="3" className="p-8 text-center text-slate-400 text-xs">No hay historiales transaccionales en memoria</td></tr>
+                  ) : (
+                    ventasPaginadas.map((v, i) => {
+                      const partes = v.label ? v.label.split('|') : ['ORD', 'Paciente'];
+                      const numOrden = partes[0].trim();
+                      const nombreCli = partes[1] ? partes[1].trim() : 'Paciente';
+                      const esDeuda = v.saldo && Number(v.saldo) > 0;
+                      return (
+                        <tr key={i} className="hover:bg-sky-50/50 transition-colors">
+                          <td className="p-3">
+                            <span className="font-bold text-sky-700 text-sm block">{numOrden}</span>
+                            <span className="text-xs text-slate-600 font-medium">{nombreCli}</span>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">{v.fechaOrden ? new Date(v.fechaOrden).toLocaleString() : ''}</span>
+                          </td>
+                          <td className="p-3 font-black text-slate-800 text-sm">S/ {v.total}</td>
+                          <td className="p-3 text-right">
+                            <span className={`text-[10px] font-black px-2.5 py-1 rounded uppercase tracking-wider ${esDeuda ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'}`}>
+                              {esDeuda ? `Deuda: S/ ${v.saldo}` : 'Liquidado'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Paginador Rígido Aislado */}
+            {totalPaginas > 1 && (
+              <div className="flex justify-between items-center pt-4 border-t text-xs text-slate-500">
+                <span>Total transacciones indexadas: <strong>{ventasRecientes.length}</strong></span>
+                <div className="flex space-x-2">
+                  <button onClick={() => setPaginaActual(prev => Math.max(prev - 1, 0))} disabled={paginaActual === 0} className="px-4 py-1.5 rounded-lg border bg-white hover:bg-slate-100 disabled:opacity-30 font-bold transition-all shadow-2xs">◀ Anterior</button>
+                  <button onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas - 1))} disabled={paginaActual >= totalPaginas - 1} className="px-4 py-1.5 rounded-lg border bg-white hover:bg-slate-100 disabled:opacity-30 font-bold transition-all shadow-2xs">Siguiente ▶</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MÓDULO 3: AUDITORÍA CLÍNICA (Directorio e Historial) */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm lg:sticky lg:top-24 self-start space-y-4">
