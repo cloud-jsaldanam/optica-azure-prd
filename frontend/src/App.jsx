@@ -18,20 +18,18 @@ export default function App() {
   const [tabActiva, setTabActiva] = useState('registro');
   const [tabGraficoSecundario, setTabGraficoSecundario] = useState('mensual');
 
-  // Estados Analíticos Globales
+  // Colecciones Analíticas
   const [dataTopVentas, setDataTopVentas] = useState(null);
   const [dataMensual, setDataMensual] = useState(null);
   const [dataDiaria, setDataDiaria] = useState(null);
-  const [ventasRecientes, setVentasRecientes] = useState([]); // Últimas 10 ventas globales
-  
-  // KPIs de Cabecera
+  const [ventasRecientes, setVentasRecientes] = useState([]);
   const [kpisMes, setKpisMes] = useState({ ingresosTotales: 0, ingresosLiquidos: 0, totalOrdenes: 0 });
 
-  // Paginación nativa para la tabla de las últimas 10 ventas
+  // Paginación nativa en RAM
   const [paginaActual, setPaginaActual] = useState(0);
   const registrosPorPagina = 5;
 
-  // CAMPOS COMPLETOS DE LA ORDEN DE TRABAJO (Fidelidad 100%)
+  // CAMPOS CLÍNICOS COMPLETOS (Fidelidad 100%)
   const [dni, setDni] = useState('');
   const [nombres, setNombres] = useState('');
   const [direccion, setDireccion] = useState('');
@@ -47,7 +45,7 @@ export default function App() {
   const [cercaAdd, setCercaAdd] = useState('');
   const [cargandoVenta, setCargandoVenta] = useState(false);
 
-  // Directorio y Auditoría
+  // Directorio
   const [listaDirectorio, setListaDirectorio] = useState([]);
   const [cargandoDirectorio, setCargandoDirectorio] = useState(false);
   const [busquedaDni, setBusquedaDni] = useState('');
@@ -70,39 +68,20 @@ export default function App() {
     return res;
   };
 
-  // Carga Maestra de Analíticas
+  // Consumo directo y unificado del servidor
   const cargarDashboard = async () => {
     try {
       const res = await fetchSeguro('/api/dashboard');
       if (res.ok) {
         const d = await res.json();
         
-        // Almacenamos estrictamente las últimas 10 ventas globales
-        const ultimas10 = (d.topVentas || []).slice(0, 10);
+        // Asignación directa de las 10 ventas inyectadas con saldo y fecha
+        const ultimas10 = d.topVentas || [];
         setVentasRecientes(ultimas10);
 
-        // =========================================================================
-        // CORRECCIÓN DE KPIs: Parseo robusto de fechas nativas para evitar valores en cero
-        // =========================================================================
-        if (d.topVentas) {
-          const fechaActual = new Date();
-          const mesActual = fechaActual.getMonth();
-          const anioActual = fechaActual.getFullYear();
+        // Cabecera alimentada desde el backend garantizando consistencia absoluta
+        if (d.kpisMes) setKpisMes(d.kpisMes);
 
-          const ventasMesActual = d.topVentas.filter(v => {
-            if (!v.fechaOrden) return false;
-            const fechaVenta = new Date(v.fechaOrden);
-            return fechaVenta.getMonth() === mesActual && fechaVenta.getFullYear() === anioActual;
-          });
-          
-          const ingresosTotales = ventasMesActual.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
-          const ingresosLiquidos = ventasMesActual.reduce((sum, item) => sum + ((Number(item.total) || 0) - (Number(item.saldo || 0))), 0);
-          const totalOrdenes = ventasMesActual.length;
-
-          setKpisMes({ ingresosTotales, ingresosLiquidos, totalOrdenes });
-        }
-
-        // Gráfico Transaccional Principal (Últimas 10 ventas)
         if (ultimas10.length > 0) {
           setDataTopVentas({ 
             labels: ultimas10.map(v => v.label || 'Venta'), 
@@ -110,7 +89,6 @@ export default function App() {
           });
         } else { setDataTopVentas(null); }
         
-        // Gráficos Avanzados Diarios/Mensuales
         if (d.analiticaMensual && d.analiticaMensual.length > 0) {
           setDataMensual({ labels: d.analiticaMensual.map(m => m.mes || 'Mes'), datasets: [{ label: 'Ingresos (S/)', data: d.analiticaMensual.map(m => Number(m.total) || 0), backgroundColor: '#059669' }] });
         } else { setDataMensual(null); }
@@ -136,7 +114,6 @@ export default function App() {
 
   useEffect(() => { if (token) { cargarDashboard(); cargarDirectorio(); } }, [token, tabActiva]);
 
-  // Autenticación
   const handleLogin = async (e) => {
     e.preventDefault(); setCargandoLogin(true); setErrorLogin('');
     try {
@@ -178,7 +155,6 @@ export default function App() {
     finally { setCargandoBusqueda(false); }
   };
 
-  // Registro Transaccional con Auto-Vaciado
   const registrarVenta = async (e) => {
     e.preventDefault(); setCargandoVenta(true); setErrorForm(''); setMensajeExito('');
     if (!dni || !nombres) { setErrorForm('DNI y Nombres obligatorios.'); setCargandoVenta(false); return; }
@@ -210,7 +186,7 @@ export default function App() {
   const handleUpdateOi = (field, val) => setOi(prev => ({ ...prev, [field]: val }));
 
   // =========================================================================
-  // OPTIMIZACIÓN DE GRÁFICAS: Reducimos espacio en blanco y calibramos grosor
+  // ESTÉTICA PREMIUM: Bordes redondeados y densidad compacta para evitar vacíos
   // =========================================================================
   const opcionesElegantes = {
     maintainAspectRatio: false,
@@ -219,10 +195,9 @@ export default function App() {
       y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } }, 
       x: { grid: { display: false }, ticks: { font: { size: 9 } } } 
     },
-    datasets: { bar: { barPercentage: 0.6 } }
+    elements: { bar: { borderRadius: 4 } }
   };
 
-  // Paginación en RAM exclusiva para las 10 ventas recientes
   const totalPaginas = Math.ceil(ventasRecientes.length / registrosPorPagina);
   const ventasPaginadas = ventasRecientes.slice(paginaActual * registrosPorPagina, (paginaActual + 1) * registrosPorPagina);
 
@@ -249,7 +224,7 @@ export default function App() {
 
       <main className="p-4 md:p-6 max-w-7xl mx-auto w-full space-y-6 flex-grow">
         
-        {/* TARJETAS DE INDICADORES (KPIs Calibrados) */}
+        {/* TARJETAS SUPERIORES EN VIVO */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white p-4 rounded-xl border shadow-2xs flex items-center space-x-4 border-l-4 border-l-sky-600">
             <div>
@@ -271,10 +246,10 @@ export default function App() {
           </div>
         </div>
 
-        {/* Paneles de Gráficos y Tablas */}
+        {/* ESTRUCTURA PRINCIPAL */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* Columna Izquierda: Gráfico + Listado de las Últimas 10 Ventas */}
+          {/* Columna Izquierda: Gráfico + Listado estricto de 10 nodos */}
           <div className="lg:col-span-7 space-y-6">
             
             <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col">
@@ -284,7 +259,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* TABLA TRANSACCIONAL LIMPIA */}
+            {/* TABLA TRANSACCIONAL NATIVA */}
             <div className="bg-white p-4 rounded-xl border shadow-sm space-y-3">
               <div className="border-b pb-2">
                 <h3 className="text-xs font-bold text-slate-700 uppercase">Detalle de Últimas Transacciones</h3>
@@ -307,6 +282,7 @@ export default function App() {
                         const partes = v.label ? v.label.split('|') : ['ORD', 'Paciente'];
                         const numOrden = partes[0].trim();
                         const nombreCli = partes[1] ? partes[1].trim() : 'Paciente';
+                        // Reacción fiel y exacta a la inyección de saldo del backend
                         const esDeuda = v.saldo && Number(v.saldo) > 0;
                         return (
                           <tr key={i} className="hover:bg-slate-50 transition-colors">
@@ -328,7 +304,6 @@ export default function App() {
                 </table>
               </div>
 
-              {/* Controles de Paginación */}
               {totalPaginas > 1 && (
                 <div className="flex justify-between items-center pt-2 border-t text-xs text-slate-500">
                   <span>Mostrando bloque <strong>{paginaActual + 1}</strong> de {totalPaginas}</span>
@@ -341,7 +316,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Columna Derecha: Gráfica Compacta (Menos espacio en blanco) */}
+          {/* Columna Derecha: Contenedor optimizado a h-52 para perfecto balance vertical */}
           <div className="lg:col-span-5 bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between">
             <div className="space-y-2">
               <div className="flex justify-between items-center border-b pb-2">
@@ -356,15 +331,14 @@ export default function App() {
               </p>
             </div>
 
-            {/* Contenedor ajustado a h-48 para optimizar el balance visual */}
-            <div className="h-48 mt-4">
+            <div className="h-52 mt-4">
               {tabGraficoSecundario === 'mensual' && (dataMensual ? <Bar data={dataMensual} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando métricas...</div>)}
               {tabGraficoSecundario === 'diario' && (dataDiaria ? <Bar data={dataDiaria} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando métricas...</div>)}
             </div>
           </div>
         </div>
 
-        {/* Pestañas Modulares Centrales */}
+        {/* Pestañas Modulares */}
         <div className="flex bg-slate-200 p-1.5 rounded-xl border shadow-inner mb-6 max-w-md mx-auto mt-6">
           <button onClick={() => {setTabActiva('registro'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'registro' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📋 Módulo 1: Registrar Venta</button>
           <button onClick={() => {setTabActiva('historial'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'historial' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>🔍 Módulo 2: Auditoría</button>
@@ -373,7 +347,7 @@ export default function App() {
         {mensajeExito && <div className="bg-emerald-500 text-white p-3 rounded-xl text-center font-bold text-sm animate-fade-in">{mensajeExito}</div>}
         {errorForm && <div className="bg-rose-50 text-rose-700 p-3 rounded-xl text-center font-bold text-sm animate-fade-in border border-rose-200">{errorForm}</div>}
 
-        {/* MÓDULO 1: FORMULARIO CLÍNICO COMPLETO */}
+        {/* MÓDULO 1: FORMULARIO CLÍNICO */}
         {tabActiva === 'registro' && (
           <form onSubmit={registrarVenta} className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-white p-6 rounded-2xl border shadow-sm">
             <div className="lg:col-span-4 space-y-4">
@@ -423,7 +397,7 @@ export default function App() {
           </form>
         )}
 
-        {/* MÓDULO 2: AUDITORÍA CLÍNICA DE HISTORIALES */}
+        {/* MÓDULO 2: AUDITORÍA CLÍNICA */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm lg:sticky lg:top-24 self-start space-y-4">
@@ -487,7 +461,7 @@ export default function App() {
           </div>
         )}
 
-        {/* MODAL DETALLADO DE RECETA DE ARCHIVO */}
+        {/* MODAL INSPECCIÓN */}
         {ordenSeleccionada && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border flex flex-col max-h-[90vh]">
