@@ -55,9 +55,7 @@ export default function App() {
   const [estadoBusqueda, setEstadoBusqueda] = useState('');
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
 
-  // =========================================================================
-  // NUEVO ESTADO: Filtro en vivo por Nombres/Apellidos en el Módulo 3
-  // =========================================================================
+  // Filtro en vivo por Nombres/Apellidos en el Módulo 3
   const [filtroDirectorio, setFiltroDirectorio] = useState('');
 
   // Alertas
@@ -186,7 +184,7 @@ export default function App() {
   const handleUpdateOd = (field, val) => setOd(prev => ({ ...prev, [field]: val }));
   const handleUpdateOi = (field, val) => setOi(prev => ({ ...prev, [field]: val }));
 
-  // Configuración simétrica de altura fija para gráficas
+  // Configuración de gráficas
   const opcionesElegantes = {
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
@@ -197,13 +195,10 @@ export default function App() {
     elements: { bar: { borderRadius: 4 } }
   };
 
-  // Paginador del Módulo 2
   const totalPaginas = Math.ceil(ventasRecientes.length / registrosPorPagina);
   const ventasPaginadas = ventasRecientes.slice(paginaActual * registrosPorPagina, (paginaActual + 1) * registrosPorPagina);
 
-  // =========================================================================
-  // LÓGICA DE FILTRADO EN RAM: Búsqueda instantánea combinada por Nombres o DNI
-  // =========================================================================
+  // Filtrado reactivo en RAM
   const directorioFiltrado = (listaDirectorio || []).filter(c => 
     (c?.nombres || '').toLowerCase().includes(filtroDirectorio.toLowerCase()) ||
     (c?.dni || '').includes(filtroDirectorio)
@@ -411,7 +406,7 @@ export default function App() {
         )}
 
         {/* =========================================================================
-            MÓDULO 3: AUDITORÍA CLÍNICA (Con inyección de Filtro en Vivo por Nombre)
+            MÓDULO 3: AUDITORÍA CLÍNICA (Inputs ajustados a text-base/16px para IOS y max-h-60)
             ========================================================================= */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -422,17 +417,18 @@ export default function App() {
                   {cargandoDirectorio ? '🔄 Sincronizando...' : '🔄 Sincronizar Directorio'}
                 </button>
                 
-                {/* NUEVO FILTRO INTELIGENTE: Búsqueda flexible e instantánea en RAM */}
+                {/* AJUSTE MÓVIL: text-base evita nativamente el molesto auto-zoom en Safari/IOS */}
                 <input 
                   type="text" 
                   placeholder="🔍 Filtrar por nombre o DNI..." 
-                  className="w-full p-2 border rounded-lg text-xs outline-none focus:border-sky-600 bg-slate-50 mt-3 font-medium text-slate-700 placeholder:text-slate-400"
+                  className="w-full p-2.5 border rounded-lg text-base lg:text-xs outline-none focus:border-sky-600 bg-slate-50 mt-3 font-medium text-slate-700 placeholder:text-slate-400"
                   value={filtroDirectorio}
                   onChange={e => setFiltroDirectorio(e.target.value)}
                 />
               </div>
 
-              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+              {/* AJUSTE MÓVIL: max-h-60 en pantallas pequeñas protege el layout al abrir el teclado */}
+              <div className="space-y-2 max-h-60 lg:max-h-96 overflow-y-auto pr-1">
                 {directorioFiltrado.length === 0 ? (
                   <div className="text-center py-6 text-xs text-slate-400">No se encontraron coincidencias</div>
                 ) : (
@@ -450,7 +446,8 @@ export default function App() {
               <form onSubmit={e=>{e.preventDefault(); consultarExpediente(busquedaDni);}} className="space-y-2">
                 <label className="text-xs font-extrabold text-slate-700 block">AUDITORÍA HISTÓRICA POR DNI</label>
                 <div className="flex space-x-3">
-                  <input type="text" maxLength="8" required value={busquedaDni} onChange={e=>setBusquedaDni(e.target.value)} placeholder="Número de documento..." className="flex-1 p-2.5 border rounded-lg text-sm outline-none focus:border-sky-600" />
+                  {/* AJUSTE MÓVIL: text-base nativo en input principal */}
+                  <input type="text" maxLength="8" required value={busquedaDni} onChange={e=>setBusquedaDni(e.target.value)} placeholder="Número de documento..." className="flex-1 p-2.5 border rounded-lg text-base lg:text-sm outline-none focus:border-sky-600" />
                   <button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50">
                     {cargandoBusqueda ? 'Buscando...' : 'Auditar'}
                   </button>
