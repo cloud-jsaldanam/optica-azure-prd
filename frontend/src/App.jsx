@@ -24,7 +24,7 @@ export default function App() {
   const [dataDiaria, setDataDiaria] = useState(null);
   const [ventasRecientes, setVentasRecientes] = useState([]); // Últimas 10 ventas globales
   
-  // KPIs de Cabecera (Calculados en vivo)
+  // KPIs de Cabecera
   const [kpisMes, setKpisMes] = useState({ ingresosTotales: 0, ingresosLiquidos: 0, totalOrdenes: 0 });
 
   // Paginación nativa para la tabla de las últimas 10 ventas
@@ -81,13 +81,21 @@ export default function App() {
         const ultimas10 = (d.topVentas || []).slice(0, 10);
         setVentasRecientes(ultimas10);
 
-        // Cálculo de KPIs para las tarjetas superiores (Mes actual en curso)
+        // =========================================================================
+        // CORRECCIÓN DE KPIs: Parseo robusto de fechas nativas para evitar valores en cero
+        // =========================================================================
         if (d.topVentas) {
-          const mesActualString = new Date().toISOString().substring(0, 7); // YYYY-MM
-          const ventasMesActual = d.topVentas.filter(v => v.fechaOrden && v.fechaOrden.startsWith(mesActualString));
+          const fechaActual = new Date();
+          const mesActual = fechaActual.getMonth();
+          const anioActual = fechaActual.getFullYear();
+
+          const ventasMesActual = d.topVentas.filter(v => {
+            if (!v.fechaOrden) return false;
+            const fechaVenta = new Date(v.fechaOrden);
+            return fechaVenta.getMonth() === mesActual && fechaVenta.getFullYear() === anioActual;
+          });
           
           const ingresosTotales = ventasMesActual.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
-          // Suponiendo que el ingreso líquido nativo es lo cobrado a cuenta para simplificar la vista general
           const ingresosLiquidos = ventasMesActual.reduce((sum, item) => sum + ((Number(item.total) || 0) - (Number(item.saldo || 0))), 0);
           const totalOrdenes = ventasMesActual.length;
 
@@ -107,15 +115,10 @@ export default function App() {
           setDataMensual({ labels: d.analiticaMensual.map(m => m.mes || 'Mes'), datasets: [{ label: 'Ingresos (S/)', data: d.analiticaMensual.map(m => Number(m.total) || 0), backgroundColor: '#059669' }] });
         } else { setDataMensual(null); }
 
-        // Gráfico Naranja: Incorporamos el Cierre de Ventas (S/) en la etiqueta
         if (d.analiticaDiaria && d.analiticaDiaria.length > 0) {
           setDataDiaria({ 
             labels: d.analiticaDiaria.map(d => d.dia || 'Día'), 
-            datasets: [{ 
-              label: 'Cierre Ventas (S/)', // Etiqueta actualizada según solicitud
-              data: d.analiticaDiaria.map(d => Number(d.cantidad) || 0), 
-              backgroundColor: '#f97316' 
-            }] 
+            datasets: [{ label: 'Cierre Ventas (S/)', data: d.analiticaDiaria.map(d => Number(d.cantidad) || 0), backgroundColor: '#f97316' }] 
           });
         } else { setDataDiaria(null); }
       }
@@ -206,11 +209,17 @@ export default function App() {
   const handleUpdateOd = (field, val) => setOd(prev => ({ ...prev, [field]: val }));
   const handleUpdateOi = (field, val) => setOi(prev => ({ ...prev, [field]: val }));
 
-  // Opciones de Configuración Visual Elegante para Chart.js
+  // =========================================================================
+  // OPTIMIZACIÓN DE GRÁFICAS: Reducimos espacio en blanco y calibramos grosor
+  // =========================================================================
   const opcionesElegantes = {
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } }, x: { ticks: { font: { size: 9 } } } }
+    scales: { 
+      y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } }, 
+      x: { grid: { display: false }, ticks: { font: { size: 9 } } } 
+    },
+    datasets: { bar: { barPercentage: 0.6 } }
   };
 
   // Paginación en RAM exclusiva para las 10 ventas recientes
@@ -240,9 +249,7 @@ export default function App() {
 
       <main className="p-4 md:p-6 max-w-7xl mx-auto w-full space-y-6 flex-grow">
         
-        {/* =========================================================================
-            MEJORA PREMIUM: Tarjetas Superiores de Indicadores (KPIs del Mes en Vivo)
-            ========================================================================= */}
+        {/* TARJETAS DE INDICADORES (KPIs Calibrados) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white p-4 rounded-xl border shadow-2xs flex items-center space-x-4 border-l-4 border-l-sky-600">
             <div>
@@ -277,7 +284,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* TABLA TRANSACCIONAL LIMPIA: Sin WhatsApp ni filtros redundantes */}
+            {/* TABLA TRANSACCIONAL LIMPIA */}
             <div className="bg-white p-4 rounded-xl border shadow-sm space-y-3">
               <div className="border-b pb-2">
                 <h3 className="text-xs font-bold text-slate-700 uppercase">Detalle de Últimas Transacciones</h3>
@@ -300,7 +307,6 @@ export default function App() {
                         const partes = v.label ? v.label.split('|') : ['ORD', 'Paciente'];
                         const numOrden = partes[0].trim();
                         const nombreCli = partes[1] ? partes[1].trim() : 'Paciente';
-                        // Evaluamos de forma nativa si tiene saldo pendiente basándonos en la etiqueta o estructura
                         const esDeuda = v.saldo && Number(v.saldo) > 0;
                         return (
                           <tr key={i} className="hover:bg-slate-50 transition-colors">
@@ -322,7 +328,7 @@ export default function App() {
                 </table>
               </div>
 
-              {/* Controles de Paginación nativa en RAM */}
+              {/* Controles de Paginación */}
               {totalPaginas > 1 && (
                 <div className="flex justify-between items-center pt-2 border-t text-xs text-slate-500">
                   <span>Mostrando bloque <strong>{paginaActual + 1}</strong> de {totalPaginas}</span>
@@ -335,7 +341,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Columna Derecha: Analíticas de Fechas (Cierre por Días Incorporado) */}
+          {/* Columna Derecha: Gráfica Compacta (Menos espacio en blanco) */}
           <div className="lg:col-span-5 bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between">
             <div className="space-y-2">
               <div className="flex justify-between items-center border-b pb-2">
@@ -346,11 +352,12 @@ export default function App() {
                 </div>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">
-                {tabGraficoSecundario === 'mensual' ? 'Evolución de recaudación financiera por periodo mensual.' : 'Distribución y cierre acumulado de ventas transaccionales por día.'}
+                {tabGraficoSecundario === 'mensual' ? 'Evolución de recaudación financiera por periodo mensual.' : 'Cierre de ventas acumulado por días de la semana.'}
               </p>
             </div>
 
-            <div className="h-64 mt-4">
+            {/* Contenedor ajustado a h-48 para optimizar el balance visual */}
+            <div className="h-48 mt-4">
               {tabGraficoSecundario === 'mensual' && (dataMensual ? <Bar data={dataMensual} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando métricas...</div>)}
               {tabGraficoSecundario === 'diario' && (dataDiaria ? <Bar data={dataDiaria} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando métricas...</div>)}
             </div>
