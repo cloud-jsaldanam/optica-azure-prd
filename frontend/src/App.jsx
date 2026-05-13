@@ -18,12 +18,18 @@ export default function App() {
   const [tabActiva, setTabActiva] = useState('registro');
   const [tabGraficoSecundario, setTabGraficoSecundario] = useState('mensual');
 
-  // Gráficas
+  // Estados Analíticos Globales
   const [dataTopVentas, setDataTopVentas] = useState(null);
   const [dataMensual, setDataMensual] = useState(null);
   const [dataDiaria, setDataDiaria] = useState(null);
+  const [ventasCompletas, setVentasCompletas] = useState([]); // Almacena todo el array para la tabla transaccional
 
-  // Formulario Clínico (Módulo 1)
+  // Paginación y Filtrado para la nueva Tabla Transaccional Dinámica
+  const [filtroTabla, setFiltroTabla] = useState('');
+  const [paginaActual, setPaginaActual] = useState(0);
+  const registrosPorPagina = 5;
+
+  // CAMPOS COMPLETOS DE LA ORDEN DE TRABAJO (Fidelidad 100%)
   const [dni, setDni] = useState('');
   const [nombres, setNombres] = useState('');
   const [direccion, setDireccion] = useState('');
@@ -39,7 +45,7 @@ export default function App() {
   const [cercaAdd, setCercaAdd] = useState('');
   const [cargandoVenta, setCargandoVenta] = useState(false);
 
-  // Directorio y Búsqueda (Módulo 2)
+  // Directorio y Auditoría
   const [listaDirectorio, setListaDirectorio] = useState([]);
   const [cargandoDirectorio, setCargandoDirectorio] = useState(false);
   const [busquedaDni, setBusquedaDni] = useState('');
@@ -62,21 +68,31 @@ export default function App() {
     return res;
   };
 
+  // Carga Maestra de Analíticas
   const cargarDashboard = async () => {
     try {
       const res = await fetchSeguro('/api/dashboard');
       if (res.ok) {
         const d = await res.json();
+        
+        // Seteamos la colección cruda para alimentar la nueva tabla paginada en vivo
+        if (d.topVentas) setVentasCompletas(d.topVentas);
+
+        // Gráfico Transaccional Principal (Se preserva su vista nativa)
         if (d.topVentas && d.topVentas.length > 0) {
-          setDataTopVentas({ labels: d.topVentas.map(v => v.label || 'Venta'), datasets: [{ label: 'S/', data: d.topVentas.map(v => Number(v.total) || 0), backgroundColor: '#0284c7' }] });
+          setDataTopVentas({ 
+            labels: d.topVentas.slice(0, 8).map(v => v.label || 'Venta'), 
+            datasets: [{ label: 'Total (S/)', data: d.topVentas.slice(0, 8).map(v => Number(v.total) || 0), backgroundColor: '#0284c7' }] 
+          });
         } else { setDataTopVentas(null); }
         
+        // Gráficos Avanzados Diarios/Mensuales
         if (d.analiticaMensual && d.analiticaMensual.length > 0) {
-          setDataMensual({ labels: d.analiticaMensual.map(m => m.mes || 'Mes'), datasets: [{ label: 'Ventas Totales (S/)', data: d.analiticaMensual.map(m => Number(m.total) || 0), backgroundColor: '#059669' }] });
+          setDataMensual({ labels: d.analiticaMensual.map(m => m.mes || 'Mes'), datasets: [{ label: 'Ingresos (S/)', data: d.analiticaMensual.map(m => Number(m.total) || 0), backgroundColor: '#059669' }] });
         } else { setDataMensual(null); }
 
         if (d.analiticaDiaria && d.analiticaDiaria.length > 0) {
-          setDataDiaria({ labels: d.analiticaDiaria.map(d => d.dia || 'Día'), datasets: [{ label: 'Cantidad Órdenes', data: d.analiticaDiaria.map(d => Number(d.cantidad) || 0), backgroundColor: '#f97316' }] });
+          setDataDiaria({ labels: d.analiticaDiaria.map(d => d.dia || 'Día'), datasets: [{ label: 'Volumen Órdenes', data: d.analiticaDiaria.map(d => Number(d.cantidad) || 0), backgroundColor: '#f97316' }] });
         } else { setDataDiaria(null); }
       }
     } catch (e) { console.error(e); }
@@ -86,16 +102,14 @@ export default function App() {
     setCargandoDirectorio(true);
     try {
       const res = await fetchSeguro('/api/clientes');
-      if (res.ok) {
-        const data = await res.json();
-        setListaDirectorio(data.clientes || []);
-      }
+      if (res.ok) setListaDirectorio((await res.json()).clientes || []);
     } catch (e) {} 
     finally { setCargandoDirectorio(false); }
   };
 
   useEffect(() => { if (token) { cargarDashboard(); cargarDirectorio(); } }, [token, tabActiva]);
 
+  // Autenticación Flexible
   const handleLogin = async (e) => {
     e.preventDefault(); setCargandoLogin(true); setErrorLogin('');
     try {
@@ -111,7 +125,7 @@ export default function App() {
 
   const purgarClienteCompleto = async (e, cid, nombre) => {
     e.stopPropagation();
-    if (!window.confirm(`¿BORRADO TOTAL? Se eliminará a ${nombre} y TODO su historial de la base de datos física.`)) return;
+    if (!window.confirm(`¿BORRADO DEFINITIVO? Se eliminará a ${nombre} y TODO su historial de la base de datos física.`)) return;
     const res = await fetchSeguro(`/api/venta?id=${cid}`, { method: 'DELETE' });
     if (res.ok) {
       setMensajeExito("Limpieza total completada.");
@@ -137,6 +151,7 @@ export default function App() {
     finally { setCargandoBusqueda(false); }
   };
 
+  // Registro Transaccional con Auto-Vaciado
   const registrarVenta = async (e) => {
     e.preventDefault(); setCargandoVenta(true); setErrorForm(''); setMensajeExito('');
     if (!dni || !nombres) { setErrorForm('DNI y Nombres obligatorios.'); setCargandoVenta(false); return; }
@@ -167,6 +182,20 @@ export default function App() {
   const handleUpdateOd = (field, val) => setOd(prev => ({ ...prev, [field]: val }));
   const handleUpdateOi = (field, val) => setOi(prev => ({ ...prev, [field]: val }));
 
+  // Opciones de Configuración Visual Elegante para Chart.js (Data Labels inyectados)
+  const opcionesElegantes = {
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } }, x: { ticks: { font: { size: 9 } } } }
+  };
+
+  // Lógica de Filtrado y Paginación en RAM para la Tabla Dinámica
+  const ventasFiltradas = ventasCompletas.filter(v => 
+    (v.label || '').toLowerCase().includes(filtroTabla.toLowerCase())
+  );
+  const totalPaginas = Math.ceil(ventasFiltradas.length / registrosPorPagina);
+  const ventasPaginadas = ventasFiltradas.slice(paginaActual * registrosPorPagina, (paginaActual + 1) * registrosPorPagina);
+
   if (!token) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
@@ -189,29 +218,133 @@ export default function App() {
       </header>
 
       <main className="p-4 md:p-6 max-w-7xl mx-auto w-full space-y-6 flex-grow">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col">
-            <h2 className="text-xs font-bold text-slate-400 mb-2 uppercase">Recientes (S/) | Orden + Paciente</h2>
-            <div className="h-44">{dataTopVentas ? <Bar data={dataTopVentas} options={{maintainAspectRatio:false, plugins:{legend:{display:false}}}} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Sin datos transaccionales</div>}</div>
-          </div>
+        
+        {/* =========================================================================
+            NUEVA DISPOSICIÓN VISUAL PREMIUM: Gráficas Enriquecidas + Tabla Paginada
+            ========================================================================= */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col">
-            <div className="flex justify-between items-center mb-2">
-              <h2 className="text-xs font-bold text-slate-400 uppercase">Analítica de Ventas</h2>
-              <div className="flex bg-slate-100 rounded-lg p-0.5 border text-[10px]">
-                <button onClick={()=>setTabGraficoSecundario('mensual')} className={`px-2 py-1 rounded-md font-bold ${tabGraficoSecundario==='mensual'?'bg-white text-sky-700 shadow':'text-slate-500'}`}>Meses (S/)</button>
-                <button onClick={()=>setTabGraficoSecundario('diario')} className={`px-2 py-1 rounded-md font-bold ${tabGraficoSecundario==='diario'?'bg-white text-sky-700 shadow':'text-slate-500'}`}>Días (#)</button>
+          {/* Columna Izquierda (7 Paneles): Gráfico Principal + Tabla Dinámica Ultra-Escalable */}
+          <div className="lg:col-span-7 space-y-6">
+            
+            {/* Gráfico Superior Transaccional */}
+            <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col">
+              <h2 className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">Recientes (S/) | Orden + Paciente</h2>
+              <div className="h-44">
+                {dataTopVentas ? <Bar data={dataTopVentas} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Sin datos transaccionales</div>}
               </div>
             </div>
-            <div className="h-44">
-              {tabGraficoSecundario === 'mensual' && (dataMensual ? <Bar data={dataMensual} options={{maintainAspectRatio:false, plugins:{legend:{display:false}}}} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando...</div>)}
-              {tabGraficoSecundario === 'diario' && (dataDiaria ? <Bar data={dataDiaria} options={{maintainAspectRatio:false, plugins:{legend:{display:false}}}} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando...</div>)}
+
+            {/* TABLA TRANSACCIONAL DINÁMICA: Soluciona la pérdida de visibilidad a largo plazo */}
+            <div className="bg-white p-4 rounded-xl border shadow-sm space-y-3">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-2">
+                <h3 className="text-xs font-bold text-slate-700 uppercase">Listado Detallado en Memoria</h3>
+                <input 
+                  type="text" 
+                  placeholder="🔍 Filtrar paciente u orden..." 
+                  className="p-1.5 border rounded-lg text-xs w-full sm:w-48 outline-none focus:border-sky-600 bg-slate-50"
+                  value={filtroTabla} 
+                  onChange={e => { setFiltroTabla(e.target.value); setPaginaActual(0); }} 
+                />
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 text-[10px] text-slate-400 font-bold border-b uppercase">
+                      <th className="p-2">Identificador</th>
+                      <th className="p-2">Ingreso</th>
+                      <th className="p-2 text-center">Acción Rápida</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-xs divide-y">
+                    {ventasPaginadas.length === 0 ? (
+                      <tr><td colSpan="3" className="p-4 text-center text-slate-400 text-xs">No se encontraron coincidencias en el historial</td></tr>
+                    ) : (
+                      ventasPaginadas.map((v, i) => {
+                        const partes = v.label ? v.label.split('|') : ['ORD', 'Paciente'];
+                        const numOrden = partes[0].trim();
+                        const nombreCli = partes[1] ? partes[1].trim() : 'Paciente';
+                        return (
+                          <tr key={i} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-2">
+                              <span className="font-bold text-sky-700 block">{numOrden}</span>
+                              <span className="text-[10px] text-slate-500 font-medium">{nombreCli}</span>
+                            </td>
+                            <td className="p-2 font-extrabold text-slate-800">S/ {v.total}</td>
+                            <td className="p-2 text-center">
+                              <a 
+                                href={`https://wa.me/?text=${encodeURIComponent(`Hola ${nombreCli}, te saludamos de Óptica MV para informarte sobre tu orden ${numOrden}.`)}`}
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                title="Notificar por WhatsApp"
+                                className="inline-block bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 text-[10px] font-bold px-2 py-1 rounded transition-all shadow-2xs"
+                              >
+                                💬 Contactar
+                              </a>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Controles de Paginación Elegantes */}
+              {totalPaginas > 1 && (
+                <div className="flex justify-between items-center pt-2 border-t text-xs text-slate-500">
+                  <span>Página <strong>{paginaActual + 1}</strong> de {totalPaginas}</span>
+                  <div className="flex space-x-1">
+                    <button 
+                      onClick={() => setPaginaActual(prev => Math.max(prev - 1, 0))} 
+                      disabled={paginaActual === 0} 
+                      className="px-2.5 py-1 rounded border bg-white hover:bg-slate-100 disabled:opacity-30 font-bold transition-all"
+                    >
+                      ◀
+                    </button>
+                    <button 
+                      onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas - 1))} 
+                      disabled={paginaActual >= totalPaginas - 1} 
+                      className="px-2.5 py-1 rounded border bg-white hover:bg-slate-100 disabled:opacity-30 font-bold transition-all"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Columna Derecha (5 Paneles): Analíticas Avanzadas de Costos y Fechas */}
+          <div className="lg:col-span-5 bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center border-b pb-2">
+                <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Analítica de Ventas</h2>
+                <div className="flex bg-slate-100 rounded-lg p-0.5 border text-[10px]">
+                  <button onClick={()=>setTabGraficoSecundario('mensual')} className={`px-2.5 py-1 rounded-md font-bold transition-all ${tabGraficoSecundario==='mensual'?'bg-sky-600 text-white shadow-xs':'text-slate-500 hover:text-slate-800'}`}>Meses (S/)</button>
+                  <button onClick={()=>setTabGraficoSecundario('diario')} className={`px-2.5 py-1 rounded-md font-bold transition-all ${tabGraficoSecundario==='diario'?'bg-sky-600 text-white shadow-xs':'text-slate-500 hover:text-slate-800'}`}>Días (#)</button>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400 font-medium">
+                {tabGraficoSecundario === 'mensual' ? 'Evolución financiera global acumulada por periodo mensual.' : 'Distribución transaccional de carga clínica por día de la semana.'}
+              </p>
+            </div>
+
+            <div className="h-64 mt-4">
+              {tabGraficoSecundario === 'mensual' && (dataMensual ? <Bar data={dataMensual} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando métricas...</div>)}
+              {tabGraficoSecundario === 'diario' && (dataDiaria ? <Bar data={dataDiaria} options={opcionesElegantes} /> : <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">Cargando métricas...</div>)}
+            </div>
+
+            <div className="bg-sky-50/50 p-3 rounded-lg border border-sky-100/60 mt-4 text-center">
+              <span className="text-[10px] font-extrabold text-sky-800 block uppercase tracking-wider">Estado de Infraestructura</span>
+              <span className="text-xs font-medium text-slate-600">Base de datos serverless con procesamiento en memoria activa.</span>
             </div>
           </div>
         </div>
 
-        {/* Pestañas Modulares estilizadas e intuitivas */}
-        <div className="flex bg-slate-200 p-1.5 rounded-xl border shadow-inner mb-6 max-w-md mx-auto">
+        {/* Pestañas Modulares Centrales */}
+        <div className="flex bg-slate-200 p-1.5 rounded-xl border shadow-inner mb-6 max-w-md mx-auto mt-6">
           <button onClick={() => {setTabActiva('registro'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'registro' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📋 Módulo 1: Registrar Venta</button>
           <button onClick={() => {setTabActiva('historial'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'historial' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>🔍 Módulo 2: Auditoría</button>
         </div>
@@ -219,6 +352,7 @@ export default function App() {
         {mensajeExito && <div className="bg-emerald-500 text-white p-3 rounded-xl text-center font-bold text-sm animate-fade-in">{mensajeExito}</div>}
         {errorForm && <div className="bg-rose-50 text-rose-700 p-3 rounded-xl text-center font-bold text-sm animate-fade-in border border-rose-200">{errorForm}</div>}
 
+        {/* MÓDULO 1: FORMULARIO CLÍNICO COMPLETO */}
         {tabActiva === 'registro' && (
           <form onSubmit={registrarVenta} className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-white p-6 rounded-2xl border shadow-sm">
             <div className="lg:col-span-4 space-y-4">
@@ -271,7 +405,6 @@ export default function App() {
         {/* MÓDULO 2: AUDITORÍA CLÍNICA DE HISTORIALES */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* CORRECCIÓN MÓVIL: Reemplazamos sticky por lg:sticky lg:top-24 para que fluya en el scroll del teléfono */}
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm lg:sticky lg:top-24 self-start space-y-4">
               <div className="border-b pb-3">
                 <h3 className="text-xs font-extrabold text-slate-700 mb-2">DIRECTORIO GLOBAL</h3>
