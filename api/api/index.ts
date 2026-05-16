@@ -70,18 +70,38 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         } catch (e) { context.res = { status: 500, body: { error: e.message } }; return; }
     }
 
-    // 4. REGISTRO DE VENTA
+    // =========================================================================
+    // 4. REGISTRO DE VENTA (Actualizado para guardar monturaPrecio y tipoTrabajoPrecio)
+    // =========================================================================
     if (path === "venta" && req.method === "POST") {
         try {
             const p = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
             const ts = new Date().toISOString();
+            
+            // Creación o actualización del paciente
             await container.items.upsert({ id: `cli_${p.dni}`, tipo: "cliente", dni: p.dni, nombres: p.nombres, direccion: p.direccion, telefono: p.telefono, fechaRegistro: ts });
+            
+            // Generación de número de orden
             const num = `ORD-${Date.now().toString().slice(-6)}`;
+            
+            // Guardado físico en Cosmos DB (Ahora intercepta los precios desglosados)
             await container.items.create({ 
-                id: `ord_${num}`, tipo: "orden", numeroOrden: num, fechaOrden: ts, clienteId: `cli_${p.dni}`, 
-                montura: p.montura, tipoTrabajo: p.tipoTrabajo, tratado: p.tratado, refraccion: p.refraccion, 
-                aCuenta: Number(p.aCuenta), saldo: Number(p.saldo), total: Number(p.total), 
-                fechaEntrega: p.fechaEntrega, vendedor: sesion.nombre 
+                id: `ord_${num}`, 
+                tipo: "orden", 
+                numeroOrden: num, 
+                fechaOrden: ts, 
+                clienteId: `cli_${p.dni}`, 
+                montura: p.montura, 
+                monturaPrecio: Number(p.monturaPrecio) || 0,         // <-- INYECCIÓN DE DATO FALTANTE
+                tipoTrabajo: p.tipoTrabajo, 
+                tipoTrabajoPrecio: Number(p.tipoTrabajoPrecio) || 0, // <-- INYECCIÓN DE DATO FALTANTE
+                tratado: p.tratado, 
+                refraccion: p.refraccion, 
+                aCuenta: Number(p.aCuenta), 
+                saldo: Number(p.saldo), 
+                total: Number(p.total), 
+                fechaEntrega: p.fechaEntrega, 
+                vendedor: sesion.nombre 
             });
             context.res = { status: 201, body: { numeroOrden: num } }; return;
         } catch (e) { context.res = { status: 500, body: { error: e.message } }; return; }
@@ -114,18 +134,14 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         } catch (e) { context.res = { status: 500, body: { error: e.message } }; return; }
     }
 
-    // =========================================================================
-    // 6. DASHBOARD MAESTRO: KPIs procesados y empaquetados nativamente en el servidor
-    // =========================================================================
+    // 6. DASHBOARD MAESTRO
     if (path === "dashboard" && req.method === "GET") {
         try {
             const { resources: todasOrdenes } = await container.items.query("SELECT * FROM c WHERE c.tipo = 'orden'").fetchAll();
             const ordenesValidas = todasOrdenes || [];
 
-            // Ordenamos estrictamente por fecha descendente
             const sorted = [...ordenesValidas].sort((a, b) => new Date(b.fechaOrden).getTime() - new Date(a.fechaOrden).getTime());
             
-            // Extraemos las últimas 10 transacciones e inyectamos todas las variables requeridas
             const topRaw = sorted.slice(0, 10);
             const topVentasDetallado = await Promise.all(topRaw.map(async (o) => {
                 let nombreCliente = "Paciente";
@@ -145,7 +161,6 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
                 };
             }));
 
-            // CÁLCULO CENTRALIZADO DE KPIs (Garantiza que la cabecera jamás devuelva ceros erróneos)
             const ahora = new Date();
             const mesActual = ahora.getMonth();
             const anioActual = ahora.getFullYear();
@@ -160,7 +175,6 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
             const ingresosLiquidos = ordenesMesActual.reduce((sum, o) => sum + ((Number(o.total) || 0) - (Number(o.saldo || 0))), 0);
             const totalOrdenes = ordenesMesActual.length;
 
-            // HISTORIAL MENSUAL ACUMULADO (Últimos 6 meses)
             const countsMeses: Record<string, number> = {};
             for(let i=5; i>=0; i--) {
                 const d = new Date(); d.setMonth(d.getMonth() - i);
@@ -176,7 +190,6 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
                 mes: `${NOMBRES_MESES[Number(key.substring(5))-1]}`, total: value
             }));
 
-            // CIERRE ACUMULADO POR DÍAS DE LA SEMANA (Soles totales vendidos por día)
             const countsDias: Record<number, number> = {1:0, 2:0, 3:0, 4:0, 5:0, 6:0, 0:0};
             ordenesValidas.forEach(o => {
                 if(!o.fechaOrden) return;
