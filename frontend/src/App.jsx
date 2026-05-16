@@ -29,9 +29,7 @@ export default function App() {
   const [paginaActual, setPaginaActual] = useState(0);
   const registrosPorPagina = 5;
 
-  // =========================================================================
-  // CAMPOS DE FORMULARIO ACTUALIZADOS (Refracción simplificada + Precios)
-  // =========================================================================
+  // CAMPOS DE FORMULARIO
   const [dni, setDni] = useState('');
   const [nombres, setNombres] = useState('');
   const [direccion, setDireccion] = useState('');
@@ -39,9 +37,9 @@ export default function App() {
   const [total, setTotal] = useState('');
   const [aCuenta, setACuenta] = useState('');
   const [montura, setMontura] = useState('');
-  const [monturaPrecio, setMonturaPrecio] = useState(''); // NUEVO
+  const [monturaPrecio, setMonturaPrecio] = useState(''); 
   const [tipoTrabajo, setTipoTrabajo] = useState('');
-  const [tipoTrabajoPrecio, setTipoTrabajoPrecio] = useState(''); // NUEVO
+  const [tipoTrabajoPrecio, setTipoTrabajoPrecio] = useState(''); 
   const [tratado, setTratado] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState('');
   
@@ -160,8 +158,8 @@ export default function App() {
         const data = await res.json();
         if (data.cliente || (data.ordenes && data.ordenes.length > 0)) {
           setClienteEncontrado(data.cliente); setOrdenesCliente(data.ordenes || []); setEstadoBusqueda('');
-        } else { setEstadoBusqueda('No se encontraron historiales.'); }
-      } else { setEstadoBusqueda('No se localizó el expediente.'); }
+        } else { setEstadoBusqueda('No se encontraron historiales para este paciente.'); }
+      } else { setEstadoBusqueda('No se localizó el expediente en la base de datos.'); }
     } catch(e) { setEstadoBusqueda('Error de consulta.'); } 
     finally { setCargandoBusqueda(false); }
   };
@@ -170,7 +168,6 @@ export default function App() {
     e.preventDefault(); setCargandoVenta(true); setErrorForm(''); setMensajeExito('');
     if (!dni || !nombres) { setErrorForm('DNI y Nombres obligatorios.'); setCargandoVenta(false); return; }
     
-    // Inyección de los nuevos precios al Payload
     const payload = { 
       dni: dni.trim(), nombres: nombres.trim(), direccion, telefono, 
       montura, monturaPrecio: Number(monturaPrecio), 
@@ -311,9 +308,7 @@ export default function App() {
         {mensajeExito && <div className="bg-emerald-500 text-white p-3 rounded-xl text-center font-bold text-sm animate-fade-in">{mensajeExito}</div>}
         {errorForm && <div className="bg-rose-50 text-rose-700 p-3 rounded-xl text-center font-bold text-sm animate-fade-in border border-rose-200">{errorForm}</div>}
 
-        {/* =========================================================================
-            MÓDULO 1: FORMULARIO CLÍNICO (Adaptado a Talonario Simple + Precios)
-            ========================================================================= */}
+        {/* MÓDULO 1: FORMULARIO CLÍNICO */}
         {tabActiva === 'registro' && (
           <form onSubmit={registrarVenta} className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-white p-6 rounded-2xl border shadow-sm">
             <div className="lg:col-span-4 space-y-4">
@@ -326,7 +321,7 @@ export default function App() {
 
             <div className="lg:col-span-8 space-y-6">
               
-              {/* TABLA DE REFRACCIÓN SIMPLIFICADA (Solo ESF, CIL, EJE) */}
+              {/* TABLA DE REFRACCIÓN SIMPLIFICADA */}
               <div>
                 <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">REFRACCIÓN VISUAL (Lejos)</h3>
                 <div className="overflow-x-auto">
@@ -357,14 +352,14 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ESPECIFICACIONES CON PRECIOS DESGLOSADOS */}
+              {/* ESPECIFICACIONES CON TIPO DE TRABAJO Y PRECIOS DESGLOSADOS */}
               <div>
                 <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">ESPECIFICACIONES Y COSTOS</h3>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">MONTURA</label><input type="text" value={montura} onChange={e=>setMontura(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
                   <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-emerald-600 block mb-1">PRECIO (S/)</label><input type="number" placeholder="0.00" value={monturaPrecio} onChange={e=>setMonturaPrecio(e.target.value)} className="w-full p-2 border rounded text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 bg-emerald-50/30" /></div>
                   
-                  <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">TRABAJO</label><input type="text" value={tipoTrabajo} onChange={e=>setTipoTrabajo(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
+                  <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO DE TRABAJO</label><input type="text" value={tipoTrabajo} onChange={e=>setTipoTrabajo(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
                   <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-emerald-600 block mb-1">PRECIO (S/)</label><input type="number" placeholder="0.00" value={tipoTrabajoPrecio} onChange={e=>setTipoTrabajoPrecio(e.target.value)} className="w-full p-2 border rounded text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 bg-emerald-50/30" /></div>
                   
                   <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">TRATADO</label><input type="text" value={tratado} onChange={e=>setTratado(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
@@ -450,7 +445,7 @@ export default function App() {
           </div>
         )}
 
-        {/* MÓDULO 3: AUDITORÍA CLÍNICA */}
+        {/* MÓDULO 3: AUDITORÍA CLÍNICA (Buscador Redundante Eliminado) */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm lg:sticky lg:top-24 self-start space-y-4">
@@ -484,52 +479,54 @@ export default function App() {
             </div>
 
             <div className="lg:col-span-8 bg-white p-5 rounded-b-xl rounded-tl-xl border space-y-6 shadow-sm">
-              <form onSubmit={e=>{e.preventDefault(); consultarExpediente(busquedaDni);}} className="space-y-2">
-                <label className="text-xs font-extrabold text-slate-700 block">AUDITORÍA HISTÓRICA POR DNI</label>
-                <div className="flex space-x-3">
-                  <input type="text" maxLength="8" required value={busquedaDni} onChange={e=>setBusquedaDni(e.target.value)} placeholder="Número de documento..." className="flex-1 p-2.5 border rounded-lg text-base lg:text-sm outline-none focus:border-sky-600" />
-                  <button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50">
-                    {cargandoBusqueda ? 'Buscando...' : 'Auditar'}
-                  </button>
-                </div>
-                {estadoBusqueda && <p className="text-xs text-slate-500 font-medium">{estadoBusqueda}</p>}
-              </form>
+              
+              {/* Estado de Búsqueda y Placeholder visual limpio cuando no hay selección */}
+              {estadoBusqueda && <p className="text-xs text-slate-500 font-medium text-center animate-pulse">{estadoBusqueda}</p>}
 
+              {!clienteEncontrado && !estadoBusqueda && (
+                 <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                   <span className="text-5xl mb-4">🔍</span>
+                   <p className="text-base font-bold text-slate-500">Seleccione un paciente del directorio</p>
+                   <p className="text-xs mt-1">Utilice el buscador inteligente de la izquierda para localizar su historial clínico.</p>
+                 </div>
+              )}
+
+              {/* Paneles de Datos (Solo visibles tras seleccionar un paciente) */}
               {clienteEncontrado && (
-                <div className="border-t pt-5 grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border">
                   <div><span className="text-[10px] font-bold text-slate-400 block">PACIENTE</span><p className="font-bold text-slate-800 text-sm">{clienteEncontrado?.nombres || ''}</p></div>
                   <div><span className="text-[10px] font-bold text-slate-400 block">DOCUMENTO</span><p className="font-medium text-slate-700 text-sm">{clienteEncontrado?.dni || ''}</p></div>
                   <div><span className="text-[10px] font-bold text-slate-400 block">CONTACTO</span><p className="text-xs text-slate-600">{clienteEncontrado?.telefono || 'Sin registro'}</p></div>
                 </div>
               )}
 
-              <div>
-                <h3 className="text-xs font-extrabold text-slate-700 mb-3">HISTORIAL DE ÓRDENES PREVIAS</h3>
-                {(ordenesCliente || []).length === 0 ? <div className="text-center py-8 border-2 border-dashed rounded-xl text-slate-400 text-xs">Sin transacciones registradas.</div> : (
-                  <div className="space-y-3">
-                    {(ordenesCliente || []).map(o => (
-                      <div key={o?.id || Math.random()} onClick={()=>setOrdenSeleccionada(o)} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md cursor-pointer flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-l-4 border-l-sky-500 transition-all">
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2"><span className="bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded text-[10px]">{o?.numeroOrden || 'ORD'}</span><span className="text-xs text-slate-400">{o?.fechaOrden ? new Date(o.fechaOrden).toLocaleDateString() : ''}</span></div>
-                          <p className="text-xs font-bold text-slate-800">{o?.montura || 'Servicio'} • <span className="text-slate-600 font-normal">{o?.tipoTrabajo || ''}</span></p>
-                          <span className="text-[10px] text-slate-400 block">Atendido por: <strong className="text-slate-600">{o?.vendedor || 'Especialista'}</strong></span>
+              {clienteEncontrado && (
+                <div className="mt-6">
+                  <h3 className="text-xs font-extrabold text-slate-700 mb-3">HISTORIAL DE ÓRDENES PREVIAS</h3>
+                  {(ordenesCliente || []).length === 0 ? <div className="text-center py-8 border-2 border-dashed rounded-xl text-slate-400 text-xs">Sin transacciones registradas.</div> : (
+                    <div className="space-y-3">
+                      {(ordenesCliente || []).map(o => (
+                        <div key={o?.id || Math.random()} onClick={()=>setOrdenSeleccionada(o)} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md cursor-pointer flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-l-4 border-l-sky-500 transition-all">
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2"><span className="bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded text-[10px]">{o?.numeroOrden || 'ORD'}</span><span className="text-xs text-slate-400">{o?.fechaOrden ? new Date(o.fechaOrden).toLocaleDateString() : ''}</span></div>
+                            <p className="text-xs font-bold text-slate-800">{o?.montura || 'Servicio'} • <span className="text-slate-600 font-normal">{o?.tipoTrabajo || ''}</span></p>
+                            <span className="text-[10px] text-slate-400 block">Atendido por: <strong className="text-slate-600">{o?.vendedor || 'Especialista'}</strong></span>
+                          </div>
+                          <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end gap-2 border-t md:border-t-0 pt-2 md:pt-0">
+                            <div className="flex items-center space-x-3"><span className="text-xs font-extrabold text-slate-800">Total: S/ {o?.total || 0}</span>{rolActual==='admin' && <button onClick={e=>eliminarOrdenRegistro(e,o?.id,o?.numeroOrden)} className="text-[10px] text-rose-500 border border-rose-200 px-2 py-0.5 rounded font-bold hover:bg-rose-50 transition-colors">Eliminar</button>}</div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${Number(o?.saldo)>0?'bg-rose-50 text-rose-700 border border-rose-100':'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>{Number(o?.saldo)>0?`Saldo: S/ ${o.saldo}`:'Liquidado'}</span>
+                          </div>
                         </div>
-                        <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end gap-2 border-t md:border-t-0 pt-2 md:pt-0">
-                          <div className="flex items-center space-x-3"><span className="text-xs font-extrabold text-slate-800">Total: S/ {o?.total || 0}</span>{rolActual==='admin' && <button onClick={e=>eliminarOrdenRegistro(e,o?.id,o?.numeroOrden)} className="text-[10px] text-rose-500 border border-rose-200 px-2 py-0.5 rounded font-bold hover:bg-rose-50 transition-colors">Eliminar</button>}</div>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${Number(o?.saldo)>0?'bg-rose-50 text-rose-700 border border-rose-100':'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>{Number(o?.saldo)>0?`Saldo: S/ ${o.saldo}`:'Liquidado'}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* =========================================================================
-            MODAL INSPECCIÓN (Adaptado a visualización de la tabla reducida y precios)
-            ========================================================================= */}
+        {/* MODAL INSPECCIÓN */}
         {ordenSeleccionada && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border flex flex-col max-h-[90vh]">
@@ -553,7 +550,7 @@ export default function App() {
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-3 rounded-xl border text-xs">
                     <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">MONTURA</span><p className="font-bold text-slate-800">{ordenSeleccionada?.montura||'N/A'}</p></div>
                     <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-emerald-600 block font-bold">PRECIO M.</span><p className="font-bold text-emerald-700">S/ {ordenSeleccionada?.monturaPrecio||'0.00'}</p></div>
-                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">TRABAJO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tipoTrabajo||'N/A'}</p></div>
+                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">TIPO DE TRABAJO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tipoTrabajo||'N/A'}</p></div>
                     <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-emerald-600 block font-bold">PRECIO T.</span><p className="font-bold text-emerald-700">S/ {ordenSeleccionada?.tipoTrabajoPrecio||'0.00'}</p></div>
                     <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">TRATADO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tratado||'N/A'}</p></div>
                   </div>
