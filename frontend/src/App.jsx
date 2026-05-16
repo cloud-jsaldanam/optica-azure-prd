@@ -43,9 +43,6 @@ export default function App() {
   const [tratado, setTratado] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState('');
   
-  // =========================================================================
-  // NUEVA ESTRUCTURA DE REFRACCIÓN (Adaptada al talonario físico)
-  // =========================================================================
   const [od, setOd] = useState({ esf: '', cil: '', eje: '' });
   const [oi, setOi] = useState({ esf: '', cil: '', eje: '' });
   const [addCerca, setAddCerca] = useState('');
@@ -174,7 +171,6 @@ export default function App() {
     e.preventDefault(); setCargandoVenta(true); setErrorForm(''); setMensajeExito('');
     if (!dni || !nombres) { setErrorForm('DNI y Nombres obligatorios.'); setCargandoVenta(false); return; }
     
-    // Inyección de la nueva estructura de refracción
     const payload = { 
       dni: dni.trim(), nombres: nombres.trim(), direccion, telefono, 
       montura, monturaPrecio: Number(monturaPrecio), 
@@ -206,6 +202,35 @@ export default function App() {
       setOrdenesCliente(prev => prev.filter(o => o.id !== ordId));
       cargarDirectorio(); cargarDashboard();
     }
+  };
+
+  // NUEVA FUNCIÓN: REGISTRAR ABONO
+  const registrarPago = async (e, ordId, saldoActual) => {
+    e.stopPropagation();
+    const abonoStr = window.prompt(`Esta orden tiene una deuda de S/ ${saldoActual}.\nIngrese el monto abonado (S/):`, saldoActual);
+    
+    if (abonoStr === null || abonoStr.trim() === '') return;
+    
+    const abono = Number(abonoStr);
+    if (isNaN(abono) || abono <= 0) {
+      alert("Por favor, ingrese un monto válido mayor a 0.");
+      return;
+    }
+
+    try {
+      const res = await fetchSeguro('/api/venta', { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ id: ordId, abono }) 
+      });
+      if (res.ok) {
+        setMensajeExito(`Pago de S/ ${abono} registrado correctamente.`);
+        cargarDashboard();
+        if (busquedaDni) consultarExpediente(busquedaDni);
+      } else {
+        alert("Ocurrió un error al registrar el pago.");
+      }
+    } catch (e) { alert("Fallo de red al conectar con el servidor."); }
   };
 
   const handleUpdateOd = (field, val) => setOd(prev => ({ ...prev, [field]: val }));
@@ -316,9 +341,7 @@ export default function App() {
         {mensajeExito && <div className="bg-emerald-500 text-white p-3 rounded-xl text-center font-bold text-sm animate-fade-in">{mensajeExito}</div>}
         {errorForm && <div className="bg-rose-50 text-rose-700 p-3 rounded-xl text-center font-bold text-sm animate-fade-in border border-rose-200">{errorForm}</div>}
 
-        {/* =========================================================================
-            MÓDULO 1: FORMULARIO CLÍNICO (Adaptado a Talonario Simple + Precios)
-            ========================================================================= */}
+        {/* MÓDULO 1: FORMULARIO CLÍNICO */}
         {tabActiva === 'registro' && (
           <form onSubmit={registrarVenta} className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-white p-6 rounded-2xl border shadow-sm">
             <div className="lg:col-span-4 space-y-4">
@@ -331,17 +354,13 @@ export default function App() {
 
             <div className="lg:col-span-8 space-y-6">
               
-              {/* TABLA DE REFRACCIÓN REDISEÑADA COMO EN PAPEL */}
               <div>
                 <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">REFRACCIÓN VISUAL</h3>
                 <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50 p-3">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="text-slate-500 text-[10px] font-extrabold uppercase border-b border-slate-200">
-                        <th className="p-2 w-16">OJO</th>
-                        <th className="p-2">ESFERA</th>
-                        <th className="p-2">CILINDRO</th>
-                        <th className="p-2">EJE</th>
+                        <th className="p-2 w-16">OJO</th><th className="p-2">ESFERA</th><th className="p-2">CILINDRO</th><th className="p-2">EJE</th>
                       </tr>
                     </thead>
                     <tbody className="text-xs text-slate-700 divide-y divide-slate-200">
@@ -359,39 +378,22 @@ export default function App() {
                       </tr>
                     </tbody>
                   </table>
-
-                  {/* PARTE INFERIOR DEL TALONARIO: ADICIONES Y DIP */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-slate-200">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Add. Cerca:</label>
-                      <input type="text" value={addCerca} onChange={e=>setAddCerca(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Add. Intermedia:</label>
-                      <input type="text" value={addIntermedia} onChange={e=>setAddIntermedia(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Dip. Lejos:</label>
-                      <input type="text" value={dipLejos} onChange={e=>setDipLejos(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Dip. Cerca:</label>
-                      <input type="text" value={dipCerca} onChange={e=>setDipCerca(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" />
-                    </div>
+                    <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Add. Cerca:</label><input type="text" value={addCerca} onChange={e=>setAddCerca(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Add. Intermedia:</label><input type="text" value={addIntermedia} onChange={e=>setAddIntermedia(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Dip. Lejos:</label><input type="text" value={dipLejos} onChange={e=>setDipLejos(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Dip. Cerca:</label><input type="text" value={dipCerca} onChange={e=>setDipCerca(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" /></div>
                   </div>
                 </div>
               </div>
 
-              {/* ESPECIFICACIONES CON TIPO DE TRABAJO Y PRECIOS DESGLOSADOS */}
               <div>
                 <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">ESPECIFICACIONES Y COSTOS</h3>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">MONTURA</label><input type="text" value={montura} onChange={e=>setMontura(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
                   <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-emerald-600 block mb-1">PRECIO (S/)</label><input type="number" placeholder="0.00" value={monturaPrecio} onChange={e=>setMonturaPrecio(e.target.value)} className="w-full p-2 border rounded text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 bg-emerald-50/30" /></div>
-                  
                   <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO DE TRABAJO</label><input type="text" value={tipoTrabajo} onChange={e=>setTipoTrabajo(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
                   <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-emerald-600 block mb-1">PRECIO (S/)</label><input type="number" placeholder="0.00" value={tipoTrabajoPrecio} onChange={e=>setTipoTrabajoPrecio(e.target.value)} className="w-full p-2 border rounded text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 bg-emerald-50/30" /></div>
-                  
                   <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">TRATADO</label><input type="text" value={tratado} onChange={e=>setTratado(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
                 </div>
               </div>
@@ -475,7 +477,7 @@ export default function App() {
           </div>
         )}
 
-        {/* MÓDULO 3: AUDITORÍA CLÍNICA (Limpiado del buscador derecho) */}
+        {/* MÓDULO 3: AUDITORÍA CLÍNICA */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm lg:sticky lg:top-24 self-start space-y-4">
@@ -542,7 +544,18 @@ export default function App() {
                           </div>
                           <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end gap-2 border-t md:border-t-0 pt-2 md:pt-0">
                             <div className="flex items-center space-x-3"><span className="text-xs font-extrabold text-slate-800">Total: S/ {o?.total || 0}</span>{rolActual==='admin' && <button onClick={e=>eliminarOrdenRegistro(e,o?.id,o?.numeroOrden)} className="text-[10px] text-rose-500 border border-rose-200 px-2 py-0.5 rounded font-bold hover:bg-rose-50 transition-colors">Eliminar</button>}</div>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${Number(o?.saldo)>0?'bg-rose-50 text-rose-700 border border-rose-100':'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>{Number(o?.saldo)>0?`Saldo: S/ ${o.saldo}`:'Liquidado'}</span>
+                            
+                            {/* BOTONES DE PAGO RE-INYECTADOS */}
+                            <div className="flex space-x-2">
+                              {Number(o?.saldo) > 0 && (
+                                <button onClick={e => registrarPago(e, o.id, o.saldo)} className="text-[10px] text-emerald-600 border border-emerald-400 bg-emerald-50 px-3 py-0.5 rounded font-extrabold hover:bg-emerald-500 hover:text-white transition-all shadow-sm">
+                                  Abonar
+                                </button>
+                              )}
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${Number(o?.saldo)>0?'bg-rose-50 text-rose-700 border border-rose-100':'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
+                                {Number(o?.saldo)>0?`Saldo: S/ ${o.saldo}`:'Liquidado'}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -554,7 +567,7 @@ export default function App() {
           </div>
         )}
 
-        {/* MODAL INSPECCIÓN ACTUALIZADO */}
+        {/* MODAL INSPECCIÓN */}
         {ordenSeleccionada && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border flex flex-col max-h-[90vh]">
