@@ -14,8 +14,8 @@ export default function App() {
   const [errorLogin, setErrorLogin] = useState('');
   const [cargandoLogin, setCargandoLogin] = useState(false);
 
-  // Navegación modular de 3 vistas
-  const [tabActiva, setTabActiva] = useState('registro'); // 'registro', 'transacciones', 'historial'
+  // Navegación modular
+  const [tabActiva, setTabActiva] = useState('registro'); 
   const [tabGraficoSecundario, setTabGraficoSecundario] = useState('mensual');
 
   // Colecciones Analíticas
@@ -25,11 +25,13 @@ export default function App() {
   const [ventasRecientes, setVentasRecientes] = useState([]);
   const [kpisMes, setKpisMes] = useState({ ingresosTotales: 0, ingresosLiquidos: 0, totalOrdenes: 0 });
 
-  // Paginación nativa en RAM para el Módulo de Transacciones
+  // Paginación
   const [paginaActual, setPaginaActual] = useState(0);
   const registrosPorPagina = 5;
 
-  // CAMPOS CLÍNICOS COMPLETOS (Fidelidad 100%)
+  // =========================================================================
+  // CAMPOS DE FORMULARIO ACTUALIZADOS (Refracción simplificada + Precios)
+  // =========================================================================
   const [dni, setDni] = useState('');
   const [nombres, setNombres] = useState('');
   const [direccion, setDireccion] = useState('');
@@ -37,12 +39,16 @@ export default function App() {
   const [total, setTotal] = useState('');
   const [aCuenta, setACuenta] = useState('');
   const [montura, setMontura] = useState('');
+  const [monturaPrecio, setMonturaPrecio] = useState(''); // NUEVO
   const [tipoTrabajo, setTipoTrabajo] = useState('');
+  const [tipoTrabajoPrecio, setTipoTrabajoPrecio] = useState(''); // NUEVO
   const [tratado, setTratado] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState('');
-  const [od, setOd] = useState({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' });
-  const [oi, setOi] = useState({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' });
-  const [cercaAdd, setCercaAdd] = useState('');
+  
+  // Refracción reducida exactamente al talonario manual
+  const [od, setOd] = useState({ esf: '', cil: '', eje: '' });
+  const [oi, setOi] = useState({ esf: '', cil: '', eje: '' });
+  
   const [cargandoVenta, setCargandoVenta] = useState(false);
 
   // Directorio y Búsqueda
@@ -54,8 +60,6 @@ export default function App() {
   const [cargandoBusqueda, setCargandoBusqueda] = useState(false);
   const [estadoBusqueda, setEstadoBusqueda] = useState('');
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
-
-  // Filtro en vivo por Nombres/Apellidos en el Módulo 3
   const [filtroDirectorio, setFiltroDirectorio] = useState('');
 
   // Alertas
@@ -63,6 +67,15 @@ export default function App() {
   const [errorForm, setErrorForm] = useState('');
 
   const saldoCalculado = (Number(total) || 0) - (Number(aCuenta) || 0);
+
+  // Auto-cálculo inteligente del Total en base a los precios desglosados
+  useEffect(() => {
+    const mPrecio = Number(monturaPrecio) || 0;
+    const tPrecio = Number(tipoTrabajoPrecio) || 0;
+    if (mPrecio > 0 || tPrecio > 0) {
+      setTotal((mPrecio + tPrecio).toString());
+    }
+  }, [monturaPrecio, tipoTrabajoPrecio]);
 
   const fetchSeguro = async (endpoint, options = {}) => {
     const headers = { ...options.headers, 'x-optica-auth': `Bearer ${localStorage.getItem('jwt_optica')}` };
@@ -76,7 +89,6 @@ export default function App() {
       const res = await fetchSeguro('/api/dashboard');
       if (res.ok) {
         const d = await res.json();
-        
         const ultimas10 = d.topVentas || [];
         setVentasRecientes(ultimas10);
         if (d.kpisMes) setKpisMes(d.kpisMes);
@@ -128,7 +140,7 @@ export default function App() {
 
   const purgarClienteCompleto = async (e, cid, nombre) => {
     e.stopPropagation();
-    if (!window.confirm(`¿BORRADO DEFINITIVO? Se eliminará a ${nombre} y TODO su historial de la base de datos física.`)) return;
+    if (!window.confirm(`¿BORRADO DEFINITIVO? Se eliminará a ${nombre} y TODO su historial.`)) return;
     const res = await fetchSeguro(`/api/venta?id=${cid}`, { method: 'DELETE' });
     if (res.ok) {
       setMensajeExito("Limpieza total completada.");
@@ -148,7 +160,7 @@ export default function App() {
         const data = await res.json();
         if (data.cliente || (data.ordenes && data.ordenes.length > 0)) {
           setClienteEncontrado(data.cliente); setOrdenesCliente(data.ordenes || []); setEstadoBusqueda('');
-        } else { setEstadoBusqueda('No se encontraron historiales para este documento.'); }
+        } else { setEstadoBusqueda('No se encontraron historiales.'); }
       } else { setEstadoBusqueda('No se localizó el expediente.'); }
     } catch(e) { setEstadoBusqueda('Error de consulta.'); } 
     finally { setCargandoBusqueda(false); }
@@ -157,13 +169,23 @@ export default function App() {
   const registrarVenta = async (e) => {
     e.preventDefault(); setCargandoVenta(true); setErrorForm(''); setMensajeExito('');
     if (!dni || !nombres) { setErrorForm('DNI y Nombres obligatorios.'); setCargandoVenta(false); return; }
-    const payload = { dni: dni.trim(), nombres: nombres.trim(), direccion, telefono, montura, tipoTrabajo, tratado, fechaEntrega, aCuenta: Number(aCuenta), saldo: saldoCalculado, total: Number(total), refraccion: { od, oi, cercaAdd } };
+    
+    // Inyección de los nuevos precios al Payload
+    const payload = { 
+      dni: dni.trim(), nombres: nombres.trim(), direccion, telefono, 
+      montura, monturaPrecio: Number(monturaPrecio), 
+      tipoTrabajo, tipoTrabajoPrecio: Number(tipoTrabajoPrecio), 
+      tratado, fechaEntrega, aCuenta: Number(aCuenta), saldo: saldoCalculado, total: Number(total), 
+      refraccion: { od, oi } 
+    };
+
     try {
       const res = await fetchSeguro('/api/venta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) { 
         setMensajeExito("Generado con éxito."); 
-        setDni(''); setNombres(''); setDireccion(''); setTelefono(''); setTotal(''); setACuenta(''); setMontura(''); setTipoTrabajo(''); setTratado(''); setFechaEntrega('');
-        setOd({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); setOi({ rp: '', esf: '', cil: '', eje: '', dip: '', alt: '' }); setCercaAdd('');
+        setDni(''); setNombres(''); setDireccion(''); setTelefono(''); setTotal(''); setACuenta(''); 
+        setMontura(''); setMonturaPrecio(''); setTipoTrabajo(''); setTipoTrabajoPrecio(''); setTratado(''); setFechaEntrega('');
+        setOd({ esf: '', cil: '', eje: '' }); setOi({ esf: '', cil: '', eje: '' });
         cargarDashboard(); cargarDirectorio(); 
       } else { setErrorForm('Error al guardar la orden.'); }
     } catch(e) { setErrorForm('Fallo de red.'); }
@@ -184,7 +206,6 @@ export default function App() {
   const handleUpdateOd = (field, val) => setOd(prev => ({ ...prev, [field]: val }));
   const handleUpdateOi = (field, val) => setOi(prev => ({ ...prev, [field]: val }));
 
-  // Configuración de gráficas
   const opcionesElegantes = {
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
@@ -198,7 +219,6 @@ export default function App() {
   const totalPaginas = Math.ceil(ventasRecientes.length / registrosPorPagina);
   const ventasPaginadas = ventasRecientes.slice(paginaActual * registrosPorPagina, (paginaActual + 1) * registrosPorPagina);
 
-  // Filtrado reactivo en RAM
   const directorioFiltrado = (listaDirectorio || []).filter(c => 
     (c?.nombres || '').toLowerCase().includes(filtroDirectorio.toLowerCase()) ||
     (c?.dni || '').includes(filtroDirectorio)
@@ -227,7 +247,7 @@ export default function App() {
 
       <main className="p-4 md:p-6 max-w-7xl mx-auto w-full space-y-6 flex-grow">
         
-        {/* TARJETAS SUPERIORES EN VIVO */}
+        {/* TARJETAS SUPERIORES */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white p-4 rounded-xl border shadow-2xs flex items-center space-x-4 border-l-4 border-l-sky-600">
             <div>
@@ -249,7 +269,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* LAYOUT PRINCIPAL SIMÉTRICO */}
+        {/* LAYOUT PRINCIPAL */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between">
             <div className="border-b pb-2">
@@ -291,7 +311,9 @@ export default function App() {
         {mensajeExito && <div className="bg-emerald-500 text-white p-3 rounded-xl text-center font-bold text-sm animate-fade-in">{mensajeExito}</div>}
         {errorForm && <div className="bg-rose-50 text-rose-700 p-3 rounded-xl text-center font-bold text-sm animate-fade-in border border-rose-200">{errorForm}</div>}
 
-        {/* MÓDULO 1: FORMULARIO CLÍNICO */}
+        {/* =========================================================================
+            MÓDULO 1: FORMULARIO CLÍNICO (Adaptado a Talonario Simple + Precios)
+            ========================================================================= */}
         {tabActiva === 'registro' && (
           <form onSubmit={registrarVenta} className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-white p-6 rounded-2xl border shadow-sm">
             <div className="lg:col-span-4 space-y-4">
@@ -303,26 +325,49 @@ export default function App() {
             </div>
 
             <div className="lg:col-span-8 space-y-6">
+              
+              {/* TABLA DE REFRACCIÓN SIMPLIFICADA (Solo ESF, CIL, EJE) */}
               <div>
-                <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">REFRACCIÓN LEJOS (Según talonario)</h3>
+                <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">REFRACCIÓN VISUAL (Lejos)</h3>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[500px]">
-                    <thead><tr className="bg-slate-100 text-slate-600 text-[10px] font-bold border-b"><th className="p-2">OJO</th><th className="p-2">R.P.</th><th className="p-2">ESF</th><th className="p-2">CIL.</th><th className="p-2">EJE</th><th className="p-2">DIP</th><th className="p-2">ALT</th></tr></thead>
+                  <table className="w-full text-left border-collapse min-w-[300px]">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-600 text-[10px] font-bold border-b">
+                        <th className="p-2 w-16">OJO</th>
+                        <th className="p-2">ESF</th>
+                        <th className="p-2">CIL</th>
+                        <th className="p-2">EJE</th>
+                      </tr>
+                    </thead>
                     <tbody className="text-xs text-slate-700 divide-y">
-                      <tr><td className="p-2 font-bold text-sky-700">O.D.</td><td><input type="text" className="w-full p-1 border rounded text-center" value={od.rp} onChange={e=>handleUpdateOd('rp',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={od.esf} onChange={e=>handleUpdateOd('esf',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={od.cil} onChange={e=>handleUpdateOd('cil',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={od.eje} onChange={e=>handleUpdateOd('eje',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={od.dip} onChange={e=>handleUpdateOd('dip',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={od.alt} onChange={e=>handleUpdateOd('alt',e.target.value)} /></td></tr>
-                      <tr><td className="p-2 font-bold text-sky-700">O.I.</td><td><input type="text" className="w-full p-1 border rounded text-center" value={oi.rp} onChange={e=>handleUpdateOi('rp',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={oi.esf} onChange={e=>handleUpdateOi('esf',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center font-bold" value={oi.cil} onChange={e=>handleUpdateOi('cil',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={oi.eje} onChange={e=>handleUpdateOi('eje',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={oi.dip} onChange={e=>handleUpdateOi('dip',e.target.value)} /></td><td><input type="text" className="w-full p-1 border rounded text-center" value={oi.alt} onChange={e=>handleUpdateOi('alt',e.target.value)} /></td></tr>
+                      <tr>
+                        <td className="p-2 font-bold text-sky-700">O.D.</td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600" value={od.esf} onChange={e=>handleUpdateOd('esf',e.target.value)} /></td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600" value={od.cil} onChange={e=>handleUpdateOd('cil',e.target.value)} /></td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center outline-none focus:border-sky-600" value={od.eje} onChange={e=>handleUpdateOd('eje',e.target.value)} /></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 font-bold text-sky-700">O.I.</td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600" value={oi.esf} onChange={e=>handleUpdateOi('esf',e.target.value)} /></td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600" value={oi.cil} onChange={e=>handleUpdateOi('cil',e.target.value)} /></td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center outline-none focus:border-sky-600" value={oi.eje} onChange={e=>handleUpdateOi('eje',e.target.value)} /></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
-                <div className="mt-3 max-w-xs"><label className="text-[10px] font-bold text-slate-500 block mb-1">CERCA ADD.</label><input type="text" value={cercaAdd} onChange={e=>setCercaAdd(e.target.value)} placeholder="Ej. +2.00" className="w-full p-1.5 border rounded text-xs outline-none focus:border-sky-600" /></div>
               </div>
 
+              {/* ESPECIFICACIONES CON PRECIOS DESGLOSADOS */}
               <div>
-                <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">ESPECIFICACIONES DEL PRODUCTO</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div><label className="text-[10px] font-bold text-slate-500 block mb-1">MONTURA</label><input type="text" value={montura} onChange={e=>setMontura(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
-                  <div><label className="text-[10px] font-bold text-slate-500 block mb-1">TIPO TRABAJO</label><input type="text" value={tipoTrabajo} onChange={e=>setTipoTrabajo(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
-                  <div><label className="text-[10px] font-bold text-slate-500 block mb-1">TRATADO</label><input type="text" value={tratado} onChange={e=>setTratado(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
+                <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">ESPECIFICACIONES Y COSTOS</h3>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">MONTURA</label><input type="text" value={montura} onChange={e=>setMontura(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
+                  <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-emerald-600 block mb-1">PRECIO (S/)</label><input type="number" placeholder="0.00" value={monturaPrecio} onChange={e=>setMonturaPrecio(e.target.value)} className="w-full p-2 border rounded text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 bg-emerald-50/30" /></div>
+                  
+                  <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">TRABAJO</label><input type="text" value={tipoTrabajo} onChange={e=>setTipoTrabajo(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
+                  <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-emerald-600 block mb-1">PRECIO (S/)</label><input type="number" placeholder="0.00" value={tipoTrabajoPrecio} onChange={e=>setTipoTrabajoPrecio(e.target.value)} className="w-full p-2 border rounded text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 bg-emerald-50/30" /></div>
+                  
+                  <div className="col-span-2 md:col-span-1"><label className="text-[10px] font-bold text-slate-500 block mb-1">TRATADO</label><input type="text" value={tratado} onChange={e=>setTratado(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600" /></div>
                 </div>
               </div>
 
@@ -405,9 +450,7 @@ export default function App() {
           </div>
         )}
 
-        {/* =========================================================================
-            MÓDULO 3: AUDITORÍA CLÍNICA (Inputs ajustados a text-base/16px para IOS y max-h-60)
-            ========================================================================= */}
+        {/* MÓDULO 3: AUDITORÍA CLÍNICA */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm lg:sticky lg:top-24 self-start space-y-4">
@@ -417,7 +460,6 @@ export default function App() {
                   {cargandoDirectorio ? '🔄 Sincronizando...' : '🔄 Sincronizar Directorio'}
                 </button>
                 
-                {/* AJUSTE MÓVIL: text-base evita nativamente el molesto auto-zoom en Safari/IOS */}
                 <input 
                   type="text" 
                   placeholder="🔍 Filtrar por nombre o DNI..." 
@@ -427,7 +469,6 @@ export default function App() {
                 />
               </div>
 
-              {/* AJUSTE MÓVIL: max-h-60 en pantallas pequeñas protege el layout al abrir el teclado */}
               <div className="space-y-2 max-h-60 lg:max-h-96 overflow-y-auto pr-1">
                 {directorioFiltrado.length === 0 ? (
                   <div className="text-center py-6 text-xs text-slate-400">No se encontraron coincidencias</div>
@@ -446,7 +487,6 @@ export default function App() {
               <form onSubmit={e=>{e.preventDefault(); consultarExpediente(busquedaDni);}} className="space-y-2">
                 <label className="text-xs font-extrabold text-slate-700 block">AUDITORÍA HISTÓRICA POR DNI</label>
                 <div className="flex space-x-3">
-                  {/* AJUSTE MÓVIL: text-base nativo en input principal */}
                   <input type="text" maxLength="8" required value={busquedaDni} onChange={e=>setBusquedaDni(e.target.value)} placeholder="Número de documento..." className="flex-1 p-2.5 border rounded-lg text-base lg:text-sm outline-none focus:border-sky-600" />
                   <button type="submit" disabled={cargandoBusqueda} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold text-sm transition-all disabled:opacity-50">
                     {cargandoBusqueda ? 'Buscando...' : 'Auditar'}
@@ -487,28 +527,38 @@ export default function App() {
           </div>
         )}
 
-        {/* MODAL INSPECCIÓN */}
+        {/* =========================================================================
+            MODAL INSPECCIÓN (Adaptado a visualización de la tabla reducida y precios)
+            ========================================================================= */}
         {ordenSeleccionada && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border flex flex-col max-h-[90vh]">
               <div className="bg-slate-800 text-white p-4 flex justify-between items-center"><div><span className="text-[10px] bg-sky-500 text-white font-bold px-2 py-0.5 rounded uppercase">Receta de Archivo</span><h3 className="font-extrabold text-base mt-0.5">Expediente: {ordenSeleccionada?.numeroOrden || ''}</h3></div><button onClick={()=>setOrdenSeleccionada(null)} className="text-slate-400 hover:text-white font-bold text-lg px-2">&times;</button></div>
               <div className="p-6 overflow-y-auto space-y-6 flex-1">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-4 border-b text-xs"><div><span className="text-slate-400 block font-bold text-[10px]">REGISTRO</span><p className="font-bold text-slate-700">{ordenSeleccionada?.fechaOrden ? new Date(ordenSeleccionada.fechaOrden).toLocaleString() : ''}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">ATENDIÓ</span><p className="font-bold text-sky-700">{ordenSeleccionada?.vendedor || 'N/A'}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">ENTREGA</span><p className="font-bold text-slate-700">{ordenSeleccionada?.fechaEntrega || 'Inmediata'}</p></div></div>
+                
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">REFRACCIÓN VISUAL</h4>
                   <table className="w-full text-left border-collapse">
-                    <thead><tr className="bg-slate-100 text-slate-600 text-[10px] font-bold border-b"><th className="p-2">OJO</th><th className="p-2">R.P.</th><th className="p-2">ESF</th><th className="p-2">CIL.</th><th className="p-2">EJE</th><th className="p-2">DIP</th><th className="p-2">ALT</th></tr></thead>
+                    <thead><tr className="bg-slate-100 text-slate-600 text-[10px] font-bold border-b"><th className="p-2">OJO</th><th className="p-2">ESF</th><th className="p-2">CIL.</th><th className="p-2">EJE</th></tr></thead>
                     <tbody className="text-xs text-slate-700 divide-y">
-                      <tr><td className="p-2 font-bold text-sky-700">O.D.</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.rp||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.od?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.od?.cil||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.eje||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.dip||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.alt||'-'}</td></tr>
-                      <tr><td className="p-2 font-bold text-sky-700">O.I.</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.rp||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.oi?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.oi?.cil||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.eje||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.dip||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.alt||'-'}</td></tr>
+                      <tr><td className="p-2 font-bold text-sky-700">O.D.</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.od?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.od?.cil||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.eje||'-'}</td></tr>
+                      <tr><td className="p-2 font-bold text-sky-700">O.I.</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.oi?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.oi?.cil||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.eje||'-'}</td></tr>
                     </tbody>
                   </table>
-                  {ordenSeleccionada?.refraccion?.cercaAdd && <p className="text-xs mt-2 text-slate-600"><strong className="text-slate-800">CERCA ADD:</strong> {ordenSeleccionada.refraccion.cercaAdd}</p>}
                 </div>
+
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">PRODUCTO</h4>
-                  <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border text-xs"><div><span className="text-[10px] text-slate-400 block font-bold">MONTURA</span><p className="font-bold text-slate-800">{ordenSeleccionada?.montura||'N/A'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TRABAJO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tipoTrabajo||'Estándar'}</p></div><div><span className="text-[10px] text-slate-400 block font-bold">TRATADO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tratado||'N/A'}</p></div></div>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-3 rounded-xl border text-xs">
+                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">MONTURA</span><p className="font-bold text-slate-800">{ordenSeleccionada?.montura||'N/A'}</p></div>
+                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-emerald-600 block font-bold">PRECIO M.</span><p className="font-bold text-emerald-700">S/ {ordenSeleccionada?.monturaPrecio||'0.00'}</p></div>
+                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">TRABAJO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tipoTrabajo||'N/A'}</p></div>
+                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-emerald-600 block font-bold">PRECIO T.</span><p className="font-bold text-emerald-700">S/ {ordenSeleccionada?.tipoTrabajoPrecio||'0.00'}</p></div>
+                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">TRATADO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tratado||'N/A'}</p></div>
+                  </div>
                 </div>
+
                 <div className="bg-slate-100 p-4 rounded-xl flex justify-between items-center text-sm"><div><span className="text-[10px] font-bold text-slate-500 block uppercase">CAJA</span><p className="font-extrabold text-slate-800">Total: S/ {ordenSeleccionada?.total || 0}</p></div><div className="text-right"><span className="text-[10px] font-bold text-slate-500 block uppercase">ESTADO</span><p className={`font-extrabold ${Number(ordenSeleccionada?.saldo)>0?'text-rose-600':'text-emerald-600'}`}>{Number(ordenSeleccionada?.saldo)>0?`Saldo: S/ ${ordenSeleccionada.saldo}`:'Cancelado al 100%'}</p></div></div>
               </div>
               <div className="p-4 border-t bg-slate-50 text-right"><button onClick={()=>setOrdenSeleccionada(null)} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-lg transition-colors">Cerrar</button></div>
