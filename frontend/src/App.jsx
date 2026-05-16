@@ -69,7 +69,6 @@ export default function App() {
 
   const saldoCalculado = (Number(total) || 0) - (Number(aCuenta) || 0);
 
-  // Auto-cálculo inteligente del Total
   useEffect(() => {
     const mPrecio = Number(monturaPrecio) || 0;
     const tPrecio = Number(tipoTrabajoPrecio) || 0;
@@ -204,7 +203,9 @@ export default function App() {
     }
   };
 
-  // NUEVA FUNCIÓN: REGISTRAR ABONO
+  // =========================================================================
+  // CORRECCIÓN: REGISTRAR ABONO EVITANDO EL BLOQUEO DE MÉTODO (Usamos POST + action)
+  // =========================================================================
   const registrarPago = async (e, ordId, saldoActual) => {
     e.stopPropagation();
     const abonoStr = window.prompt(`Esta orden tiene una deuda de S/ ${saldoActual}.\nIngrese el monto abonado (S/):`, saldoActual);
@@ -219,16 +220,16 @@ export default function App() {
 
     try {
       const res = await fetchSeguro('/api/venta', { 
-        method: 'PUT', 
+        method: 'POST', // <-- Solución al bloqueo de Azure
         headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ id: ordId, abono }) 
+        body: JSON.stringify({ action: 'abono', id: ordId, abono }) 
       });
       if (res.ok) {
         setMensajeExito(`Pago de S/ ${abono} registrado correctamente.`);
         cargarDashboard();
         if (busquedaDni) consultarExpediente(busquedaDni);
       } else {
-        alert("Ocurrió un error al registrar el pago.");
+        alert("Ocurrió un error al registrar el pago en el servidor.");
       }
     } catch (e) { alert("Fallo de red al conectar con el servidor."); }
   };
@@ -331,7 +332,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* SELECTOR DE 3 MÓDULOS */}
+        {/* SELECTOR DE MÓDULOS */}
         <div className="flex bg-slate-200 p-1.5 rounded-xl border shadow-inner mb-6 max-w-xl mx-auto mt-8">
           <button onClick={() => {setTabActiva('registro'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'registro' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📋 Módulo 1: Registrar Venta</button>
           <button onClick={() => {setTabActiva('transacciones'); setErrorForm(''); setMensajeExito('');}} className={`flex-1 py-2.5 rounded-lg font-extrabold text-xs transition-all ${tabActiva === 'transacciones' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'}`}>📒 Módulo 2: Transacciones</button>
@@ -542,10 +543,10 @@ export default function App() {
                             <p className="text-xs font-bold text-slate-800">{o?.montura || 'Servicio'} • <span className="text-slate-600 font-normal">{o?.tipoTrabajo || ''}</span></p>
                             <span className="text-[10px] text-slate-400 block">Atendido por: <strong className="text-slate-600">{o?.vendedor || 'Especialista'}</strong></span>
                           </div>
+                          
                           <div className="text-right flex md:flex-col justify-between w-full md:w-auto items-center md:items-end gap-2 border-t md:border-t-0 pt-2 md:pt-0">
                             <div className="flex items-center space-x-3"><span className="text-xs font-extrabold text-slate-800">Total: S/ {o?.total || 0}</span>{rolActual==='admin' && <button onClick={e=>eliminarOrdenRegistro(e,o?.id,o?.numeroOrden)} className="text-[10px] text-rose-500 border border-rose-200 px-2 py-0.5 rounded font-bold hover:bg-rose-50 transition-colors">Eliminar</button>}</div>
                             
-                            {/* BOTONES DE PAGO RE-INYECTADOS */}
                             <div className="flex space-x-2">
                               {Number(o?.saldo) > 0 && (
                                 <button onClick={e => registrarPago(e, o.id, o.saldo)} className="text-[10px] text-emerald-600 border border-emerald-400 bg-emerald-50 px-3 py-0.5 rounded font-extrabold hover:bg-emerald-500 hover:text-white transition-all shadow-sm">

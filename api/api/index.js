@@ -49,9 +49,12 @@ const key = process.env.COSMOS_KEY || "";
 const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new cosmos_1.CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
+// =========================================================================
+// CONTRASEÑA DE MAGALY ACTUALIZADA
+// =========================================================================
 const USUARIOS_AUTORIZADOS = {
     "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal", role: "admin" },
-    "magaly": { pass: "MagalyPrd2026*", nombre: "Magaly", role: "admin" },
+    "magaly": { pass: "261097", nombre: "Magaly", role: "admin" },
     "flor": { pass: "47571420", nombre: "Flor", role: "especialista" }
 };
 const NOMBRES_MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -60,7 +63,6 @@ const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b, _c, _d, _e, _f, _g, _h;
         const path = ((_a = context.bindingData) === null || _a === void 0 ? void 0 : _a.path) || ((_b = req.params) === null || _b === void 0 ? void 0 : _b.path);
-        // 1. AUTENTICACIÓN
         if (path === "login" && req.method === "POST") {
             try {
                 const payload = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
@@ -79,7 +81,6 @@ const httpTrigger = function (context, req) {
             }
             return;
         }
-        // MIDDLEWARE DE SEGURIDAD
         const authHeader = ((_e = req.headers) === null || _e === void 0 ? void 0 : _e['x-optica-auth']) || ((_f = req.headers) === null || _f === void 0 ? void 0 : _f.authorization);
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
             context.res = { status: 401, body: { error: "No autorizado" } };
@@ -93,7 +94,6 @@ const httpTrigger = function (context, req) {
             context.res = { status: 401, body: { error: "Token inválido" } };
             return;
         }
-        // 2. DIRECTORIO GLOBAL
         if (path === "clientes" && req.method === "GET") {
             try {
                 const { resources: raw } = yield container.items.query("SELECT * FROM c WHERE c.tipo = 'cliente'").fetchAll();
@@ -106,7 +106,6 @@ const httpTrigger = function (context, req) {
                 return;
             }
         }
-        // 3. CONSULTA DE EXPEDIENTE
         if (path === "cliente" && req.method === "GET") {
             const dni = (_g = req.query) === null || _g === void 0 ? void 0 : _g.dni;
             try {
@@ -125,34 +124,39 @@ const httpTrigger = function (context, req) {
             }
         }
         // =========================================================================
-        // 4. REGISTRO DE VENTA (Actualizado para guardar monturaPrecio y tipoTrabajoPrecio)
+        // ENRUTAMIENTO MEJORADO: Usamos POST para todo y filtramos por 'action'
         // =========================================================================
         if (path === "venta" && req.method === "POST") {
             try {
                 const p = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+                // 1. SI ES UN ABONO (Actualización de deuda)
+                if (p.action === "abono") {
+                    const ordId = p.id;
+                    const abono = Number(p.abono);
+                    const { resource: doc } = yield container.item(ordId, "orden").read();
+                    if (!doc) {
+                        context.res = { status: 404, body: { error: "Orden no encontrada" } };
+                        return;
+                    }
+                    const nuevoACuenta = (Number(doc.aCuenta) || 0) + abono;
+                    let nuevoSaldo = (Number(doc.total) || 0) - nuevoACuenta;
+                    if (nuevoSaldo < 0)
+                        nuevoSaldo = 0;
+                    doc.aCuenta = nuevoACuenta;
+                    doc.saldo = nuevoSaldo;
+                    yield container.items.upsert(doc);
+                    context.res = { status: 200, body: { mensaje: "Abono registrado", saldo: nuevoSaldo } };
+                    return;
+                }
+                // 2. SI ES UNA VENTA NUEVA
                 const ts = new Date().toISOString();
-                // Creación o actualización del paciente
                 yield container.items.upsert({ id: `cli_${p.dni}`, tipo: "cliente", dni: p.dni, nombres: p.nombres, direccion: p.direccion, telefono: p.telefono, fechaRegistro: ts });
-                // Generación de número de orden
                 const num = `ORD-${Date.now().toString().slice(-6)}`;
-                // Guardado físico en Cosmos DB (Ahora intercepta los precios desglosados)
                 yield container.items.create({
-                    id: `ord_${num}`,
-                    tipo: "orden",
-                    numeroOrden: num,
-                    fechaOrden: ts,
-                    clienteId: `cli_${p.dni}`,
-                    montura: p.montura,
-                    monturaPrecio: Number(p.monturaPrecio) || 0, // <-- INYECCIÓN DE DATO FALTANTE
-                    tipoTrabajo: p.tipoTrabajo,
-                    tipoTrabajoPrecio: Number(p.tipoTrabajoPrecio) || 0, // <-- INYECCIÓN DE DATO FALTANTE
-                    tratado: p.tratado,
-                    refraccion: p.refraccion,
-                    aCuenta: Number(p.aCuenta),
-                    saldo: Number(p.saldo),
-                    total: Number(p.total),
-                    fechaEntrega: p.fechaEntrega,
-                    vendedor: sesion.nombre
+                    id: `ord_${num}`, tipo: "orden", numeroOrden: num, fechaOrden: ts, clienteId: `cli_${p.dni}`,
+                    montura: p.montura, monturaPrecio: Number(p.monturaPrecio) || 0, tipoTrabajo: p.tipoTrabajo, tipoTrabajoPrecio: Number(p.tipoTrabajoPrecio) || 0,
+                    tratado: p.tratado, refraccion: p.refraccion, aCuenta: Number(p.aCuenta), saldo: Number(p.saldo), total: Number(p.total),
+                    fechaEntrega: p.fechaEntrega, vendedor: sesion.nombre
                 });
                 context.res = { status: 201, body: { numeroOrden: num } };
                 return;
@@ -162,7 +166,6 @@ const httpTrigger = function (context, req) {
                 return;
             }
         }
-        // 5. BORRADO EN CASCADA
         if (path === "venta" && req.method === "DELETE") {
             if (sesion.role !== "admin") {
                 context.res = { status: 403, body: { error: "Sin permisos" } };
@@ -174,19 +177,13 @@ const httpTrigger = function (context, req) {
                     const { resource: doc } = yield container.item(id, "orden").read();
                     if (doc) {
                         yield container.item(id, "orden").delete().catch(() => { });
-                        const { resources: restantes } = yield container.items.query({
-                            query: "SELECT c.id FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cid",
-                            parameters: [{ name: "@cid", value: doc.clienteId }]
-                        }).fetchAll();
+                        const { resources: restantes } = yield container.items.query({ query: "SELECT c.id FROM c WHERE c.tipo = 'orden' AND c.clienteId = @cid", parameters: [{ name: "@cid", value: doc.clienteId }] }).fetchAll();
                         if (restantes.length === 0)
                             yield container.item(doc.clienteId, "cliente").delete().catch(() => { });
                     }
                 }
                 else if (id.startsWith("cli_")) {
-                    const { resources: ordenes } = yield container.items.query({
-                        query: "SELECT c.id FROM c WHERE c.tipo = 'orden' AND c.clienteId = @id",
-                        parameters: [{ name: "@id", value: id }]
-                    }).fetchAll();
+                    const { resources: ordenes } = yield container.items.query({ query: "SELECT c.id FROM c WHERE c.tipo = 'orden' AND c.clienteId = @id", parameters: [{ name: "@id", value: id }] }).fetchAll();
                     for (const o of ordenes) {
                         yield container.item(o.id, "orden").delete().catch(() => { });
                     }
@@ -200,7 +197,6 @@ const httpTrigger = function (context, req) {
                 return;
             }
         }
-        // 6. DASHBOARD MAESTRO
         if (path === "dashboard" && req.method === "GET") {
             try {
                 const { resources: todasOrdenes } = yield container.items.query("SELECT * FROM c WHERE c.tipo = 'orden'").fetchAll();
@@ -218,12 +214,8 @@ const httpTrigger = function (context, req) {
                     }
                     catch (e) { }
                     return {
-                        id: o.id,
-                        numeroOrden: o.numeroOrden,
-                        label: `${o.numeroOrden} | ${nombreCliente}`,
-                        total: Number(o.total) || 0,
-                        saldo: Number(o.saldo) || 0,
-                        fechaOrden: o.fechaOrden
+                        id: o.id, numeroOrden: o.numeroOrden, label: `${o.numeroOrden} | ${nombreCliente}`,
+                        total: Number(o.total) || 0, saldo: Number(o.saldo) || 0, fechaOrden: o.fechaOrden
                     };
                 })));
                 const ahora = new Date();
@@ -252,9 +244,7 @@ const httpTrigger = function (context, req) {
                     if (countsMeses[key] !== undefined)
                         countsMeses[key] += Number(o.total) || 0;
                 });
-                const analiticaMensual = Object.entries(countsMeses).sort((a, b) => a[0].localeCompare(b[0])).map(([key, value]) => ({
-                    mes: `${NOMBRES_MESES[Number(key.substring(5)) - 1]}`, total: value
-                }));
+                const analiticaMensual = Object.entries(countsMeses).sort((a, b) => a[0].localeCompare(b[0])).map(([key, value]) => ({ mes: `${NOMBRES_MESES[Number(key.substring(5)) - 1]}`, total: value }));
                 const countsDias = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 0: 0 };
                 ordenesValidas.forEach(o => {
                     if (!o.fechaOrden)
@@ -262,19 +252,8 @@ const httpTrigger = function (context, req) {
                     const d = new Date(o.fechaOrden);
                     countsDias[d.getDay()] += Number(o.total) || 0;
                 });
-                const analiticaDiaria = Object.entries(countsDias).map(([key, value]) => ({
-                    dia: NOMBRES_DIAS[Number(key)],
-                    cantidad: value
-                }));
-                context.res = {
-                    status: 200,
-                    body: {
-                        topVentas: topVentasDetallado,
-                        kpisMes: { ingresosTotales, ingresosLiquidos, totalOrdenes },
-                        analiticaMensual,
-                        analiticaDiaria
-                    }
-                };
+                const analiticaDiaria = Object.entries(countsDias).map(([key, value]) => ({ dia: NOMBRES_DIAS[Number(key)], cantidad: value }));
+                context.res = { status: 200, body: { topVentas: topVentasDetallado, kpisMes: { ingresosTotales, ingresosLiquidos, totalOrdenes }, analiticaMensual, analiticaDiaria } };
                 return;
             }
             catch (e) {
