@@ -43,9 +43,15 @@ export default function App() {
   const [tratado, setTratado] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState('');
   
-  // Refracción reducida exactamente al talonario manual
+  // =========================================================================
+  // NUEVA ESTRUCTURA DE REFRACCIÓN (Adaptada al talonario físico)
+  // =========================================================================
   const [od, setOd] = useState({ esf: '', cil: '', eje: '' });
   const [oi, setOi] = useState({ esf: '', cil: '', eje: '' });
+  const [addCerca, setAddCerca] = useState('');
+  const [addIntermedia, setAddIntermedia] = useState('');
+  const [dipLejos, setDipLejos] = useState('');
+  const [dipCerca, setDipCerca] = useState('');
   
   const [cargandoVenta, setCargandoVenta] = useState(false);
 
@@ -66,7 +72,7 @@ export default function App() {
 
   const saldoCalculado = (Number(total) || 0) - (Number(aCuenta) || 0);
 
-  // Auto-cálculo inteligente del Total en base a los precios desglosados
+  // Auto-cálculo inteligente del Total
   useEffect(() => {
     const mPrecio = Number(monturaPrecio) || 0;
     const tPrecio = Number(tipoTrabajoPrecio) || 0;
@@ -168,12 +174,13 @@ export default function App() {
     e.preventDefault(); setCargandoVenta(true); setErrorForm(''); setMensajeExito('');
     if (!dni || !nombres) { setErrorForm('DNI y Nombres obligatorios.'); setCargandoVenta(false); return; }
     
+    // Inyección de la nueva estructura de refracción
     const payload = { 
       dni: dni.trim(), nombres: nombres.trim(), direccion, telefono, 
       montura, monturaPrecio: Number(monturaPrecio), 
       tipoTrabajo, tipoTrabajoPrecio: Number(tipoTrabajoPrecio), 
       tratado, fechaEntrega, aCuenta: Number(aCuenta), saldo: saldoCalculado, total: Number(total), 
-      refraccion: { od, oi } 
+      refraccion: { od, oi, addCerca, addIntermedia, dipLejos, dipCerca } 
     };
 
     try {
@@ -183,6 +190,7 @@ export default function App() {
         setDni(''); setNombres(''); setDireccion(''); setTelefono(''); setTotal(''); setACuenta(''); 
         setMontura(''); setMonturaPrecio(''); setTipoTrabajo(''); setTipoTrabajoPrecio(''); setTratado(''); setFechaEntrega('');
         setOd({ esf: '', cil: '', eje: '' }); setOi({ esf: '', cil: '', eje: '' });
+        setAddCerca(''); setAddIntermedia(''); setDipLejos(''); setDipCerca('');
         cargarDashboard(); cargarDirectorio(); 
       } else { setErrorForm('Error al guardar la orden.'); }
     } catch(e) { setErrorForm('Fallo de red.'); }
@@ -308,7 +316,9 @@ export default function App() {
         {mensajeExito && <div className="bg-emerald-500 text-white p-3 rounded-xl text-center font-bold text-sm animate-fade-in">{mensajeExito}</div>}
         {errorForm && <div className="bg-rose-50 text-rose-700 p-3 rounded-xl text-center font-bold text-sm animate-fade-in border border-rose-200">{errorForm}</div>}
 
-        {/* MÓDULO 1: FORMULARIO CLÍNICO */}
+        {/* =========================================================================
+            MÓDULO 1: FORMULARIO CLÍNICO (Adaptado a Talonario Simple + Precios)
+            ========================================================================= */}
         {tabActiva === 'registro' && (
           <form onSubmit={registrarVenta} className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-white p-6 rounded-2xl border shadow-sm">
             <div className="lg:col-span-4 space-y-4">
@@ -321,34 +331,54 @@ export default function App() {
 
             <div className="lg:col-span-8 space-y-6">
               
-              {/* TABLA DE REFRACCIÓN SIMPLIFICADA */}
+              {/* TABLA DE REFRACCIÓN REDISEÑADA COMO EN PAPEL */}
               <div>
-                <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">REFRACCIÓN VISUAL (Lejos)</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[300px]">
+                <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">REFRACCIÓN VISUAL</h3>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50 p-3">
+                  <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-slate-100 text-slate-600 text-[10px] font-bold border-b">
+                      <tr className="text-slate-500 text-[10px] font-extrabold uppercase border-b border-slate-200">
                         <th className="p-2 w-16">OJO</th>
-                        <th className="p-2">ESF</th>
-                        <th className="p-2">CIL</th>
+                        <th className="p-2">ESFERA</th>
+                        <th className="p-2">CILINDRO</th>
                         <th className="p-2">EJE</th>
                       </tr>
                     </thead>
-                    <tbody className="text-xs text-slate-700 divide-y">
+                    <tbody className="text-xs text-slate-700 divide-y divide-slate-200">
                       <tr>
-                        <td className="p-2 font-bold text-sky-700">O.D.</td>
-                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600" value={od.esf} onChange={e=>handleUpdateOd('esf',e.target.value)} /></td>
-                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600" value={od.cil} onChange={e=>handleUpdateOd('cil',e.target.value)} /></td>
-                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center outline-none focus:border-sky-600" value={od.eje} onChange={e=>handleUpdateOd('eje',e.target.value)} /></td>
+                        <td className="p-2 font-black text-sky-700">O.D.</td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600 bg-white" value={od.esf} onChange={e=>handleUpdateOd('esf',e.target.value)} /></td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600 bg-white" value={od.cil} onChange={e=>handleUpdateOd('cil',e.target.value)} /></td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center outline-none focus:border-sky-600 bg-white" value={od.eje} onChange={e=>handleUpdateOd('eje',e.target.value)} /></td>
                       </tr>
                       <tr>
-                        <td className="p-2 font-bold text-sky-700">O.I.</td>
-                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600" value={oi.esf} onChange={e=>handleUpdateOi('esf',e.target.value)} /></td>
-                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600" value={oi.cil} onChange={e=>handleUpdateOi('cil',e.target.value)} /></td>
-                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center outline-none focus:border-sky-600" value={oi.eje} onChange={e=>handleUpdateOi('eje',e.target.value)} /></td>
+                        <td className="p-2 font-black text-sky-700">O.I.</td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600 bg-white" value={oi.esf} onChange={e=>handleUpdateOi('esf',e.target.value)} /></td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center font-bold outline-none focus:border-sky-600 bg-white" value={oi.cil} onChange={e=>handleUpdateOi('cil',e.target.value)} /></td>
+                        <td className="p-1"><input type="text" className="w-full p-2 border rounded text-center outline-none focus:border-sky-600 bg-white" value={oi.eje} onChange={e=>handleUpdateOi('eje',e.target.value)} /></td>
                       </tr>
                     </tbody>
                   </table>
+
+                  {/* PARTE INFERIOR DEL TALONARIO: ADICIONES Y DIP */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-slate-200">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Add. Cerca:</label>
+                      <input type="text" value={addCerca} onChange={e=>setAddCerca(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Add. Intermedia:</label>
+                      <input type="text" value={addIntermedia} onChange={e=>setAddIntermedia(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Dip. Lejos:</label>
+                      <input type="text" value={dipLejos} onChange={e=>setDipLejos(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Dip. Cerca:</label>
+                      <input type="text" value={dipCerca} onChange={e=>setDipCerca(e.target.value)} className="w-full p-2 border rounded text-xs outline-none focus:border-sky-600 bg-white" />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -445,7 +475,7 @@ export default function App() {
           </div>
         )}
 
-        {/* MÓDULO 3: AUDITORÍA CLÍNICA (Buscador Redundante Eliminado) */}
+        {/* MÓDULO 3: AUDITORÍA CLÍNICA (Limpiado del buscador derecho) */}
         {tabActiva === 'historial' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 bg-white p-4 rounded-b-xl rounded-tr-xl border shadow-sm lg:sticky lg:top-24 self-start space-y-4">
@@ -480,7 +510,6 @@ export default function App() {
 
             <div className="lg:col-span-8 bg-white p-5 rounded-b-xl rounded-tl-xl border space-y-6 shadow-sm">
               
-              {/* Estado de Búsqueda y Placeholder visual limpio cuando no hay selección */}
               {estadoBusqueda && <p className="text-xs text-slate-500 font-medium text-center animate-pulse">{estadoBusqueda}</p>}
 
               {!clienteEncontrado && !estadoBusqueda && (
@@ -491,7 +520,6 @@ export default function App() {
                  </div>
               )}
 
-              {/* Paneles de Datos (Solo visibles tras seleccionar un paciente) */}
               {clienteEncontrado && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border">
                   <div><span className="text-[10px] font-bold text-slate-400 block">PACIENTE</span><p className="font-bold text-slate-800 text-sm">{clienteEncontrado?.nombres || ''}</p></div>
@@ -526,7 +554,7 @@ export default function App() {
           </div>
         )}
 
-        {/* MODAL INSPECCIÓN */}
+        {/* MODAL INSPECCIÓN ACTUALIZADO */}
         {ordenSeleccionada && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border flex flex-col max-h-[90vh]">
@@ -536,13 +564,22 @@ export default function App() {
                 
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">REFRACCIÓN VISUAL</h4>
-                  <table className="w-full text-left border-collapse">
-                    <thead><tr className="bg-slate-100 text-slate-600 text-[10px] font-bold border-b"><th className="p-2">OJO</th><th className="p-2">ESF</th><th className="p-2">CIL.</th><th className="p-2">EJE</th></tr></thead>
-                    <tbody className="text-xs text-slate-700 divide-y">
-                      <tr><td className="p-2 font-bold text-sky-700">O.D.</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.od?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.od?.cil||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.od?.eje||'-'}</td></tr>
-                      <tr><td className="p-2 font-bold text-sky-700">O.I.</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.oi?.esf||'-'}</td><td className="p-2 font-bold">{ordenSeleccionada?.refraccion?.oi?.cil||'-'}</td><td className="p-2">{ordenSeleccionada?.refraccion?.oi?.eje||'-'}</td></tr>
-                    </tbody>
-                  </table>
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50 p-3">
+                    <table className="w-full text-left border-collapse">
+                      <thead><tr className="text-slate-500 text-[10px] font-extrabold uppercase border-b border-slate-200"><th className="p-2 w-16">OJO</th><th className="p-2">ESFERA</th><th className="p-2">CILINDRO</th><th className="p-2">EJE</th></tr></thead>
+                      <tbody className="text-xs text-slate-700 divide-y divide-slate-200">
+                        <tr><td className="p-2 font-black text-sky-700">O.D.</td><td className="p-2 font-bold bg-white rounded">{ordenSeleccionada?.refraccion?.od?.esf||'-'}</td><td className="p-2 font-bold bg-white rounded">{ordenSeleccionada?.refraccion?.od?.cil||'-'}</td><td className="p-2 bg-white rounded">{ordenSeleccionada?.refraccion?.od?.eje||'-'}</td></tr>
+                        <tr><td className="p-2 font-black text-sky-700">O.I.</td><td className="p-2 font-bold bg-white rounded">{ordenSeleccionada?.refraccion?.oi?.esf||'-'}</td><td className="p-2 font-bold bg-white rounded">{ordenSeleccionada?.refraccion?.oi?.cil||'-'}</td><td className="p-2 bg-white rounded">{ordenSeleccionada?.refraccion?.oi?.eje||'-'}</td></tr>
+                      </tbody>
+                    </table>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 pt-3 border-t border-slate-200 text-xs">
+                      {ordenSeleccionada?.refraccion?.addCerca && <div><span className="text-[10px] text-slate-400 block font-bold">ADD CERCA</span><p className="font-bold text-slate-800">{ordenSeleccionada.refraccion.addCerca}</p></div>}
+                      {ordenSeleccionada?.refraccion?.addIntermedia && <div><span className="text-[10px] text-slate-400 block font-bold">ADD INTERMEDIA</span><p className="font-bold text-slate-800">{ordenSeleccionada.refraccion.addIntermedia}</p></div>}
+                      {ordenSeleccionada?.refraccion?.dipLejos && <div><span className="text-[10px] text-slate-400 block font-bold">DIP LEJOS</span><p className="font-bold text-slate-800">{ordenSeleccionada.refraccion.dipLejos}</p></div>}
+                      {ordenSeleccionada?.refraccion?.dipCerca && <div><span className="text-[10px] text-slate-400 block font-bold">DIP CERCA</span><p className="font-bold text-slate-800">{ordenSeleccionada.refraccion.dipCerca}</p></div>}
+                    </div>
+                  </div>
                 </div>
 
                 <div>
