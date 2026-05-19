@@ -9,9 +9,6 @@ const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
 
-// =========================================================================
-// CONTRASEÑA DE MAGALY ACTUALIZADA
-// =========================================================================
 const USUARIOS_AUTORIZADOS: Record<string, { pass: string, nombre: string, role: string }> = {
     "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal", role: "admin" },
     "magaly": { pass: "261097", nombre: "Magaly", role: "admin" },
@@ -69,14 +66,11 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
         } catch (e) { context.res = { status: 500, body: { error: e.message } }; return; }
     }
 
-    // =========================================================================
-    // ENRUTAMIENTO MEJORADO: Usamos POST para todo y filtramos por 'action'
-    // =========================================================================
     if (path === "venta" && req.method === "POST") {
         try {
             const p = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
             
-            // 1. SI ES UN ABONO (Actualización de deuda)
+            // 1. SI ES UN ABONO
             if (p.action === "abono") {
                 const ordId = p.id;
                 const abono = Number(p.abono);
@@ -97,7 +91,10 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
 
             // 2. SI ES UNA VENTA NUEVA
             const ts = new Date().toISOString();
-            await container.items.upsert({ id: `cli_${p.dni}`, tipo: "cliente", dni: p.dni, nombres: p.nombres, direccion: p.direccion, telefono: p.telefono, fechaRegistro: ts });
+            
+            // CAMBIO AQUÍ: Reemplazo de 'direccion' por 'edad' en el perfil del cliente
+            await container.items.upsert({ id: `cli_${p.dni}`, tipo: "cliente", dni: p.dni, nombres: p.nombres, edad: p.edad, telefono: p.telefono, fechaRegistro: ts });
+            
             const num = `ORD-${Date.now().toString().slice(-6)}`;
             await container.items.create({ 
                 id: `ord_${num}`, tipo: "orden", numeroOrden: num, fechaOrden: ts, clienteId: `cli_${p.dni}`, 

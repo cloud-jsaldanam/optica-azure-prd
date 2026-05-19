@@ -29,10 +29,12 @@ export default function App() {
   const [paginaActual, setPaginaActual] = useState(0);
   const registrosPorPagina = 5;
 
-  // CAMPOS DE FORMULARIO
+  // =========================================================================
+  // CAMBIO AQUÍ: 'direccion' reemplazada por 'edad'
+  // =========================================================================
   const [dni, setDni] = useState('');
   const [nombres, setNombres] = useState('');
-  const [direccion, setDireccion] = useState('');
+  const [edad, setEdad] = useState(''); // <-- NUEVO ESTADO PARA LA EDAD
   const [telefono, setTelefono] = useState('');
   const [total, setTotal] = useState('');
   const [aCuenta, setACuenta] = useState('');
@@ -170,8 +172,9 @@ export default function App() {
     e.preventDefault(); setCargandoVenta(true); setErrorForm(''); setMensajeExito('');
     if (!dni || !nombres) { setErrorForm('DNI y Nombres obligatorios.'); setCargandoVenta(false); return; }
     
+    // Agregamos 'edad' al payload que viaja a la nube
     const payload = { 
-      dni: dni.trim(), nombres: nombres.trim(), direccion, telefono, 
+      dni: dni.trim(), nombres: nombres.trim(), edad, telefono, 
       montura, monturaPrecio: Number(monturaPrecio), 
       tipoTrabajo, tipoTrabajoPrecio: Number(tipoTrabajoPrecio), 
       tratado, fechaEntrega, aCuenta: Number(aCuenta), saldo: saldoCalculado, total: Number(total), 
@@ -182,7 +185,7 @@ export default function App() {
       const res = await fetchSeguro('/api/venta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) { 
         setMensajeExito("Generado con éxito."); 
-        setDni(''); setNombres(''); setDireccion(''); setTelefono(''); setTotal(''); setACuenta(''); 
+        setDni(''); setNombres(''); setEdad(''); setTelefono(''); setTotal(''); setACuenta(''); // Vaciamos 'edad'
         setMontura(''); setMonturaPrecio(''); setTipoTrabajo(''); setTipoTrabajoPrecio(''); setTratado(''); setFechaEntrega('');
         setOd({ esf: '', cil: '', eje: '' }); setOi({ esf: '', cil: '', eje: '' });
         setAddCerca(''); setAddIntermedia(''); setDipLejos(''); setDipCerca('');
@@ -203,9 +206,6 @@ export default function App() {
     }
   };
 
-  // =========================================================================
-  // CORRECCIÓN: REGISTRAR ABONO EVITANDO EL BLOQUEO DE MÉTODO (Usamos POST + action)
-  // =========================================================================
   const registrarPago = async (e, ordId, saldoActual) => {
     e.stopPropagation();
     const abonoStr = window.prompt(`Esta orden tiene una deuda de S/ ${saldoActual}.\nIngrese el monto abonado (S/):`, saldoActual);
@@ -220,7 +220,7 @@ export default function App() {
 
     try {
       const res = await fetchSeguro('/api/venta', { 
-        method: 'POST', // <-- Solución al bloqueo de Azure
+        method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ action: 'abono', id: ordId, abono }) 
       });
@@ -349,12 +349,14 @@ export default function App() {
               <h3 className="font-bold border-b pb-2 text-xs text-slate-700">FICHA DEL PACIENTE</h3>
               <input type="text" placeholder="DNI *" required maxLength={8} className="w-full p-2 border rounded font-bold text-sm outline-none focus:border-sky-600" value={dni} onChange={e=>setDni(e.target.value)} />
               <input type="text" placeholder="Nombre completo *" required className="w-full p-2 border rounded text-sm outline-none focus:border-sky-600" value={nombres} onChange={e=>setNombres(e.target.value)} />
-              <input type="text" placeholder="Dirección" className="w-full p-2 border rounded text-sm outline-none focus:border-sky-600" value={direccion} onChange={e=>setDireccion(e.target.value)} />
+              
+              {/* NUEVO INPUT: Edad */}
+              <input type="text" placeholder="Edad" className="w-full p-2 border rounded text-sm outline-none focus:border-sky-600" value={edad} onChange={e=>setEdad(e.target.value)} />
+              
               <input type="text" placeholder="Teléfono" className="w-full p-2 border rounded text-sm outline-none focus:border-sky-600" value={telefono} onChange={e=>setTelefono(e.target.value)} />
             </div>
 
             <div className="lg:col-span-8 space-y-6">
-              
               <div>
                 <h3 className="font-bold border-b pb-2 mb-3 text-xs text-slate-700">REFRACCIÓN VISUAL</h3>
                 <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50 p-3">
