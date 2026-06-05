@@ -3,13 +3,13 @@
   "name": "Sistema de Gestión Optométrica MV",
   "icons": [
     {
-      "src": "icon-192x192.png?v=2",
+      "src": "logo-lentes-192.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-512x512.png?v=2",
+      "src": "logo-lentes-512.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"
