@@ -89,10 +89,35 @@ const httpTrigger: AzureFunction = async function (context: Context, req: HttpRe
                 context.res = { status: 200, body: { mensaje: "Abono registrado", saldo: nuevoSaldo } }; return;
             }
 
-            // 2. SI ES UNA VENTA NUEVA
+            // =========================================================================
+            // 2. NUEVO: LÓGICA DE EDICIÓN DE RECETAS
+            // =========================================================================
+            if (p.action === "editar") {
+                const ord = p.orden;
+                const { resource: doc } = await container.item(ord.id, "orden").read();
+                if (!doc) { context.res = { status: 404, body: { error: "Orden no encontrada" } }; return; }
+
+                // Actualizamos los campos editables
+                doc.montura = ord.montura;
+                doc.monturaPrecio = Number(ord.monturaPrecio) || 0;
+                doc.tipoTrabajo = ord.tipoTrabajo;
+                doc.tipoTrabajoPrecio = Number(ord.tipoTrabajoPrecio) || 0;
+                doc.tratado = ord.tratado;
+                doc.refraccion = ord.refraccion;
+                doc.fechaEntrega = ord.fechaEntrega;
+                
+                // Recalculamos el saldo por si alteraron el precio total
+                doc.total = Number(ord.total) || 0;
+                doc.saldo = doc.total - (Number(doc.aCuenta) || 0);
+                if (doc.saldo < 0) doc.saldo = 0;
+
+                await container.items.upsert(doc);
+                context.res = { status: 200, body: { mensaje: "Orden actualizada correctamente" } }; return;
+            }
+
+            // 3. SI ES UNA VENTA NUEVA
             const ts = new Date().toISOString();
             
-            // CAMBIO AQUÍ: Reemplazo de 'direccion' por 'edad' en el perfil del cliente
             await container.items.upsert({ id: `cli_${p.dni}`, tipo: "cliente", dni: p.dni, nombres: p.nombres, edad: p.edad, telefono: p.telefono, fechaRegistro: ts });
             
             const num = `ORD-${Date.now().toString().slice(-6)}`;

@@ -49,9 +49,6 @@ const key = process.env.COSMOS_KEY || "";
 const JWT_SECRET_CORE = "ClaveSecretaOpticaPrd2026_FirmaEstable";
 const client = new cosmos_1.CosmosClient({ endpoint, key });
 const container = client.database("OpticaDB").container("Registros");
-// =========================================================================
-// CONTRASEÑA DE MAGALY ACTUALIZADA
-// =========================================================================
 const USUARIOS_AUTORIZADOS = {
     "admin": { pass: "OpticaSegura2026*", nombre: "Administrador Principal", role: "admin" },
     "magaly": { pass: "261097", nombre: "Magaly", role: "admin" },
@@ -123,13 +120,10 @@ const httpTrigger = function (context, req) {
                 return;
             }
         }
-        // =========================================================================
-        // ENRUTAMIENTO MEJORADO: Usamos POST para todo y filtramos por 'action'
-        // =========================================================================
         if (path === "venta" && req.method === "POST") {
             try {
                 const p = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-                // 1. SI ES UN ABONO (Actualización de deuda)
+                // 1. SI ES UN ABONO
                 if (p.action === "abono") {
                     const ordId = p.id;
                     const abono = Number(p.abono);
@@ -148,9 +142,36 @@ const httpTrigger = function (context, req) {
                     context.res = { status: 200, body: { mensaje: "Abono registrado", saldo: nuevoSaldo } };
                     return;
                 }
-                // 2. SI ES UNA VENTA NUEVA
+                // =========================================================================
+                // 2. NUEVO: LÓGICA DE EDICIÓN DE RECETAS
+                // =========================================================================
+                if (p.action === "editar") {
+                    const ord = p.orden;
+                    const { resource: doc } = yield container.item(ord.id, "orden").read();
+                    if (!doc) {
+                        context.res = { status: 404, body: { error: "Orden no encontrada" } };
+                        return;
+                    }
+                    // Actualizamos los campos editables
+                    doc.montura = ord.montura;
+                    doc.monturaPrecio = Number(ord.monturaPrecio) || 0;
+                    doc.tipoTrabajo = ord.tipoTrabajo;
+                    doc.tipoTrabajoPrecio = Number(ord.tipoTrabajoPrecio) || 0;
+                    doc.tratado = ord.tratado;
+                    doc.refraccion = ord.refraccion;
+                    doc.fechaEntrega = ord.fechaEntrega;
+                    // Recalculamos el saldo por si alteraron el precio total
+                    doc.total = Number(ord.total) || 0;
+                    doc.saldo = doc.total - (Number(doc.aCuenta) || 0);
+                    if (doc.saldo < 0)
+                        doc.saldo = 0;
+                    yield container.items.upsert(doc);
+                    context.res = { status: 200, body: { mensaje: "Orden actualizada correctamente" } };
+                    return;
+                }
+                // 3. SI ES UNA VENTA NUEVA
                 const ts = new Date().toISOString();
-                yield container.items.upsert({ id: `cli_${p.dni}`, tipo: "cliente", dni: p.dni, nombres: p.nombres, direccion: p.direccion, telefono: p.telefono, fechaRegistro: ts });
+                yield container.items.upsert({ id: `cli_${p.dni}`, tipo: "cliente", dni: p.dni, nombres: p.nombres, edad: p.edad, telefono: p.telefono, fechaRegistro: ts });
                 const num = `ORD-${Date.now().toString().slice(-6)}`;
                 yield container.items.create({
                     id: `ord_${num}`, tipo: "orden", numeroOrden: num, fechaOrden: ts, clienteId: `cli_${p.dni}`,

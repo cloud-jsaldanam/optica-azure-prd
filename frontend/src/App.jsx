@@ -29,12 +29,10 @@ export default function App() {
   const [paginaActual, setPaginaActual] = useState(0);
   const registrosPorPagina = 5;
 
-  // =========================================================================
-  // CAMBIO AQUÍ: 'direccion' reemplazada por 'edad'
-  // =========================================================================
+  // Campos de Formulario
   const [dni, setDni] = useState('');
   const [nombres, setNombres] = useState('');
-  const [edad, setEdad] = useState(''); // <-- NUEVO ESTADO PARA LA EDAD
+  const [edad, setEdad] = useState(''); 
   const [telefono, setTelefono] = useState('');
   const [total, setTotal] = useState('');
   const [aCuenta, setACuenta] = useState('');
@@ -64,6 +62,10 @@ export default function App() {
   const [estadoBusqueda, setEstadoBusqueda] = useState('');
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
   const [filtroDirectorio, setFiltroDirectorio] = useState('');
+
+  // Estados del Modo Edición
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [ordenEditada, setOrdenEditada] = useState(null);
 
   // Alertas
   const [mensajeExito, setMensajeExito] = useState('');
@@ -172,7 +174,6 @@ export default function App() {
     e.preventDefault(); setCargandoVenta(true); setErrorForm(''); setMensajeExito('');
     if (!dni || !nombres) { setErrorForm('DNI y Nombres obligatorios.'); setCargandoVenta(false); return; }
     
-    // Agregamos 'edad' al payload que viaja a la nube
     const payload = { 
       dni: dni.trim(), nombres: nombres.trim(), edad, telefono, 
       montura, monturaPrecio: Number(monturaPrecio), 
@@ -185,7 +186,7 @@ export default function App() {
       const res = await fetchSeguro('/api/venta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) { 
         setMensajeExito("Generado con éxito."); 
-        setDni(''); setNombres(''); setEdad(''); setTelefono(''); setTotal(''); setACuenta(''); // Vaciamos 'edad'
+        setDni(''); setNombres(''); setEdad(''); setTelefono(''); setTotal(''); setACuenta(''); 
         setMontura(''); setMonturaPrecio(''); setTipoTrabajo(''); setTipoTrabajoPrecio(''); setTratado(''); setFechaEntrega('');
         setOd({ esf: '', cil: '', eje: '' }); setOi({ esf: '', cil: '', eje: '' });
         setAddCerca(''); setAddIntermedia(''); setDipLejos(''); setDipCerca('');
@@ -232,6 +233,51 @@ export default function App() {
         alert("Ocurrió un error al registrar el pago en el servidor.");
       }
     } catch (e) { alert("Fallo de red al conectar con el servidor."); }
+  };
+
+  // =========================================================================
+  // CONTROLADORES DEL MODO EDICIÓN (Corregidos)
+  // =========================================================================
+  const iniciarEdicion = () => {
+    setOrdenEditada(JSON.parse(JSON.stringify(ordenSeleccionada)));
+    setModoEdicion(true);
+  };
+
+  const cancelarEdicion = () => {
+    setModoEdicion(false);
+    setOrdenEditada(null);
+  };
+
+  const handleEditRefOjo = (ojo, campo, valor) => {
+    setOrdenEditada(prev => ({...prev, refraccion: {...prev.refraccion, [ojo]: {...prev.refraccion[ojo], [campo]: valor}}}));
+  };
+
+  const handleEditRefExtra = (campo, valor) => {
+    // LLAVE EXTRA CORREGIDA AQUÍ ABAJO
+    setOrdenEditada(prev => ({...prev, refraccion: {...prev.refraccion, [campo]: valor}}));
+  };
+
+  const handleEditProd = (campo, valor) => {
+    setOrdenEditada(prev => ({...prev, [campo]: valor}));
+  };
+
+  const guardarEdicion = async () => {
+    try {
+      const res = await fetchSeguro('/api/venta', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ action: 'editar', orden: ordenEditada }) 
+      });
+      if (res.ok) {
+        setMensajeExito("Expediente corregido exitosamente.");
+        setModoEdicion(false);
+        setOrdenSeleccionada(ordenEditada); 
+        cargarDashboard();
+        if (busquedaDni) consultarExpediente(busquedaDni); 
+      } else {
+        alert("Ocurrió un error al actualizar los datos.");
+      }
+    } catch (e) { alert("Fallo de red al intentar actualizar."); }
   };
 
   const handleUpdateOd = (field, val) => setOd(prev => ({ ...prev, [field]: val }));
@@ -349,10 +395,7 @@ export default function App() {
               <h3 className="font-bold border-b pb-2 text-xs text-slate-700">FICHA DEL PACIENTE</h3>
               <input type="text" placeholder="DNI *" required maxLength={8} className="w-full p-2 border rounded font-bold text-sm outline-none focus:border-sky-600" value={dni} onChange={e=>setDni(e.target.value)} />
               <input type="text" placeholder="Nombre completo *" required className="w-full p-2 border rounded text-sm outline-none focus:border-sky-600" value={nombres} onChange={e=>setNombres(e.target.value)} />
-              
-              {/* NUEVO INPUT: Edad */}
               <input type="text" placeholder="Edad" className="w-full p-2 border rounded text-sm outline-none focus:border-sky-600" value={edad} onChange={e=>setEdad(e.target.value)} />
-              
               <input type="text" placeholder="Teléfono" className="w-full p-2 border rounded text-sm outline-none focus:border-sky-600" value={telefono} onChange={e=>setTelefono(e.target.value)} />
             </div>
 
@@ -539,7 +582,7 @@ export default function App() {
                   {(ordenesCliente || []).length === 0 ? <div className="text-center py-8 border-2 border-dashed rounded-xl text-slate-400 text-xs">Sin transacciones registradas.</div> : (
                     <div className="space-y-3">
                       {(ordenesCliente || []).map(o => (
-                        <div key={o?.id || Math.random()} onClick={()=>setOrdenSeleccionada(o)} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md cursor-pointer flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-l-4 border-l-sky-500 transition-all">
+                        <div key={o?.id || Math.random()} onClick={()=> { setOrdenSeleccionada(o); setModoEdicion(false); }} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md cursor-pointer flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-l-4 border-l-sky-500 transition-all">
                           <div className="space-y-1">
                             <div className="flex items-center space-x-2"><span className="bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded text-[10px]">{o?.numeroOrden || 'ORD'}</span><span className="text-xs text-slate-400">{o?.fechaOrden ? new Date(o.fechaOrden).toLocaleDateString() : ''}</span></div>
                             <p className="text-xs font-bold text-slate-800">{o?.montura || 'Servicio'} • <span className="text-slate-600 font-normal">{o?.tipoTrabajo || ''}</span></p>
@@ -570,13 +613,40 @@ export default function App() {
           </div>
         )}
 
-        {/* MODAL INSPECCIÓN */}
+        {/* MODAL INSPECCIÓN CON CAPACIDAD DE EDICIÓN */}
         {ordenSeleccionada && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border flex flex-col max-h-[90vh]">
-              <div className="bg-slate-800 text-white p-4 flex justify-between items-center"><div><span className="text-[10px] bg-sky-500 text-white font-bold px-2 py-0.5 rounded uppercase">Receta de Archivo</span><h3 className="font-extrabold text-base mt-0.5">Expediente: {ordenSeleccionada?.numeroOrden || ''}</h3></div><button onClick={()=>setOrdenSeleccionada(null)} className="text-slate-400 hover:text-white font-bold text-lg px-2">&times;</button></div>
+              
+              <div className="bg-slate-800 text-white p-4 flex justify-between items-center rounded-t-2xl">
+                <div>
+                  <span className="text-[10px] bg-sky-500 text-white font-bold px-2 py-0.5 rounded uppercase">Receta de Archivo</span>
+                  <h3 className="font-extrabold text-base mt-0.5">Expediente: {ordenSeleccionada?.numeroOrden || ''}</h3>
+                </div>
+                <div className="flex space-x-3 items-center">
+                  {!modoEdicion ? (
+                    <button onClick={iniciarEdicion} className="text-[11px] bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded font-bold transition-colors">✏️ Editar</button>
+                  ) : (
+                    <button onClick={cancelarEdicion} className="text-[11px] bg-rose-600 hover:bg-rose-500 px-3 py-1 rounded font-bold transition-colors">✕ Cancelar</button>
+                  )}
+                  <button onClick={()=>{setOrdenSeleccionada(null); setModoEdicion(false);}} className="text-slate-400 hover:text-white font-bold text-lg px-1">&times;</button>
+                </div>
+              </div>
+
               <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-4 border-b text-xs"><div><span className="text-slate-400 block font-bold text-[10px]">REGISTRO</span><p className="font-bold text-slate-700">{ordenSeleccionada?.fechaOrden ? new Date(ordenSeleccionada.fechaOrden).toLocaleString() : ''}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">ATENDIÓ</span><p className="font-bold text-sky-700">{ordenSeleccionada?.vendedor || 'N/A'}</p></div><div><span className="text-slate-400 block font-bold text-[10px]">ENTREGA</span><p className="font-bold text-slate-700">{ordenSeleccionada?.fechaEntrega || 'Inmediata'}</p></div></div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-4 border-b text-xs">
+                  <div><span className="text-slate-400 block font-bold text-[10px]">REGISTRO</span><p className="font-bold text-slate-700">{ordenSeleccionada?.fechaOrden ? new Date(ordenSeleccionada.fechaOrden).toLocaleString() : ''}</p></div>
+                  <div><span className="text-slate-400 block font-bold text-[10px]">ATENDIÓ</span><p className="font-bold text-sky-700">{ordenSeleccionada?.vendedor || 'N/A'}</p></div>
+                  <div>
+                    <span className="text-slate-400 block font-bold text-[10px]">ENTREGA</span>
+                    {modoEdicion ? (
+                      <input type="date" className="border-b-2 border-sky-400 outline-none bg-sky-50 px-1 text-slate-800 font-bold w-full" value={ordenEditada.fechaEntrega || ''} onChange={e => handleEditProd('fechaEntrega', e.target.value)} />
+                    ) : (
+                      <p className="font-bold text-slate-700">{ordenSeleccionada?.fechaEntrega || 'Inmediata'}</p>
+                    )}
+                  </div>
+                </div>
                 
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">REFRACCIÓN VISUAL</h4>
@@ -584,16 +654,50 @@ export default function App() {
                     <table className="w-full text-left border-collapse">
                       <thead><tr className="text-slate-500 text-[10px] font-extrabold uppercase border-b border-slate-200"><th className="p-2 w-16">OJO</th><th className="p-2">ESFERA</th><th className="p-2">CILINDRO</th><th className="p-2">EJE</th></tr></thead>
                       <tbody className="text-xs text-slate-700 divide-y divide-slate-200">
-                        <tr><td className="p-2 font-black text-sky-700">O.D.</td><td className="p-2 font-bold bg-white rounded">{ordenSeleccionada?.refraccion?.od?.esf||'-'}</td><td className="p-2 font-bold bg-white rounded">{ordenSeleccionada?.refraccion?.od?.cil||'-'}</td><td className="p-2 bg-white rounded">{ordenSeleccionada?.refraccion?.od?.eje||'-'}</td></tr>
-                        <tr><td className="p-2 font-black text-sky-700">O.I.</td><td className="p-2 font-bold bg-white rounded">{ordenSeleccionada?.refraccion?.oi?.esf||'-'}</td><td className="p-2 font-bold bg-white rounded">{ordenSeleccionada?.refraccion?.oi?.cil||'-'}</td><td className="p-2 bg-white rounded">{ordenSeleccionada?.refraccion?.oi?.eje||'-'}</td></tr>
+                        <tr>
+                          <td className="p-2 font-black text-sky-700">O.D.</td>
+                          <td className="p-2 bg-white rounded">
+                            {modoEdicion ? <input type="text" className="w-full text-center border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.refraccion?.od?.esf || ''} onChange={e => handleEditRefOjo('od', 'esf', e.target.value)} /> : <span className="font-bold">{ordenSeleccionada?.refraccion?.od?.esf || '-'}</span>}
+                          </td>
+                          <td className="p-2 bg-white rounded">
+                            {modoEdicion ? <input type="text" className="w-full text-center border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.refraccion?.od?.cil || ''} onChange={e => handleEditRefOjo('od', 'cil', e.target.value)} /> : <span className="font-bold">{ordenSeleccionada?.refraccion?.od?.cil || '-'}</span>}
+                          </td>
+                          <td className="p-2 bg-white rounded">
+                            {modoEdicion ? <input type="text" className="w-full text-center border-b-2 border-sky-400 outline-none bg-sky-50" value={ordenEditada.refraccion?.od?.eje || ''} onChange={e => handleEditRefOjo('od', 'eje', e.target.value)} /> : <span>{ordenSeleccionada?.refraccion?.od?.eje || '-'}</span>}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="p-2 font-black text-sky-700">O.I.</td>
+                          <td className="p-2 bg-white rounded">
+                            {modoEdicion ? <input type="text" className="w-full text-center border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.refraccion?.oi?.esf || ''} onChange={e => handleEditRefOjo('oi', 'esf', e.target.value)} /> : <span className="font-bold">{ordenSeleccionada?.refraccion?.oi?.esf || '-'}</span>}
+                          </td>
+                          <td className="p-2 bg-white rounded">
+                            {modoEdicion ? <input type="text" className="w-full text-center border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.refraccion?.oi?.cil || ''} onChange={e => handleEditRefOjo('oi', 'cil', e.target.value)} /> : <span className="font-bold">{ordenSeleccionada?.refraccion?.oi?.cil || '-'}</span>}
+                          </td>
+                          <td className="p-2 bg-white rounded">
+                            {modoEdicion ? <input type="text" className="w-full text-center border-b-2 border-sky-400 outline-none bg-sky-50" value={ordenEditada.refraccion?.oi?.eje || ''} onChange={e => handleEditRefOjo('oi', 'eje', e.target.value)} /> : <span>{ordenSeleccionada?.refraccion?.oi?.eje || '-'}</span>}
+                          </td>
+                        </tr>
                       </tbody>
                     </table>
                     
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 pt-3 border-t border-slate-200 text-xs">
-                      {ordenSeleccionada?.refraccion?.addCerca && <div><span className="text-[10px] text-slate-400 block font-bold">ADD CERCA</span><p className="font-bold text-slate-800">{ordenSeleccionada.refraccion.addCerca}</p></div>}
-                      {ordenSeleccionada?.refraccion?.addIntermedia && <div><span className="text-[10px] text-slate-400 block font-bold">ADD INTERMEDIA</span><p className="font-bold text-slate-800">{ordenSeleccionada.refraccion.addIntermedia}</p></div>}
-                      {ordenSeleccionada?.refraccion?.dipLejos && <div><span className="text-[10px] text-slate-400 block font-bold">DIP LEJOS</span><p className="font-bold text-slate-800">{ordenSeleccionada.refraccion.dipLejos}</p></div>}
-                      {ordenSeleccionada?.refraccion?.dipCerca && <div><span className="text-[10px] text-slate-400 block font-bold">DIP CERCA</span><p className="font-bold text-slate-800">{ordenSeleccionada.refraccion.dipCerca}</p></div>}
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-bold">ADD CERCA</span>
+                        {modoEdicion ? <input type="text" className="w-full border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.refraccion?.addCerca || ''} onChange={e => handleEditRefExtra('addCerca', e.target.value)} /> : <p className="font-bold text-slate-800">{ordenSeleccionada?.refraccion?.addCerca || '-'}</p>}
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-bold">ADD INTERMEDIA</span>
+                        {modoEdicion ? <input type="text" className="w-full border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.refraccion?.addIntermedia || ''} onChange={e => handleEditRefExtra('addIntermedia', e.target.value)} /> : <p className="font-bold text-slate-800">{ordenSeleccionada?.refraccion?.addIntermedia || '-'}</p>}
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-bold">DIP LEJOS</span>
+                        {modoEdicion ? <input type="text" className="w-full border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.refraccion?.dipLejos || ''} onChange={e => handleEditRefExtra('dipLejos', e.target.value)} /> : <p className="font-bold text-slate-800">{ordenSeleccionada?.refraccion?.dipLejos || '-'}</p>}
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-bold">DIP CERCA</span>
+                        {modoEdicion ? <input type="text" className="w-full border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.refraccion?.dipCerca || ''} onChange={e => handleEditRefExtra('dipCerca', e.target.value)} /> : <p className="font-bold text-slate-800">{ordenSeleccionada?.refraccion?.dipCerca || '-'}</p>}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -601,17 +705,56 @@ export default function App() {
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-700 border-b pb-2 mb-3">PRODUCTO</h4>
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-3 rounded-xl border text-xs">
-                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">MONTURA</span><p className="font-bold text-slate-800">{ordenSeleccionada?.montura||'N/A'}</p></div>
-                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-emerald-600 block font-bold">PRECIO M.</span><p className="font-bold text-emerald-700">S/ {ordenSeleccionada?.monturaPrecio||'0.00'}</p></div>
-                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">TIPO DE TRABAJO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tipoTrabajo||'N/A'}</p></div>
-                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-emerald-600 block font-bold">PRECIO T.</span><p className="font-bold text-emerald-700">S/ {ordenSeleccionada?.tipoTrabajoPrecio||'0.00'}</p></div>
-                    <div className="col-span-2 md:col-span-1"><span className="text-[10px] text-slate-400 block font-bold">TRATADO</span><p className="font-bold text-slate-800">{ordenSeleccionada?.tratado||'N/A'}</p></div>
+                    <div className="col-span-2 md:col-span-1">
+                      <span className="text-[10px] text-slate-400 block font-bold">MONTURA</span>
+                      {modoEdicion ? <input type="text" className="w-full border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.montura || ''} onChange={e => handleEditProd('montura', e.target.value)} /> : <p className="font-bold text-slate-800">{ordenSeleccionada?.montura||'N/A'}</p>}
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                      <span className="text-[10px] text-emerald-600 block font-bold">PRECIO M.</span>
+                      {modoEdicion ? <input type="number" className="w-full border-b-2 border-emerald-400 outline-none bg-emerald-50 text-emerald-700 font-bold" value={ordenEditada.monturaPrecio || ''} onChange={e => handleEditProd('monturaPrecio', e.target.value)} /> : <p className="font-bold text-emerald-700">S/ {ordenSeleccionada?.monturaPrecio||'0.00'}</p>}
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                      <span className="text-[10px] text-slate-400 block font-bold">TIPO DE TRABAJO</span>
+                      {modoEdicion ? <input type="text" className="w-full border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.tipoTrabajo || ''} onChange={e => handleEditProd('tipoTrabajo', e.target.value)} /> : <p className="font-bold text-slate-800">{ordenSeleccionada?.tipoTrabajo||'N/A'}</p>}
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                      <span className="text-[10px] text-emerald-600 block font-bold">PRECIO T.</span>
+                      {modoEdicion ? <input type="number" className="w-full border-b-2 border-emerald-400 outline-none bg-emerald-50 text-emerald-700 font-bold" value={ordenEditada.tipoTrabajoPrecio || ''} onChange={e => handleEditProd('tipoTrabajoPrecio', e.target.value)} /> : <p className="font-bold text-emerald-700">S/ {ordenSeleccionada?.tipoTrabajoPrecio||'0.00'}</p>}
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                      <span className="text-[10px] text-slate-400 block font-bold">TRATADO</span>
+                      {modoEdicion ? <input type="text" className="w-full border-b-2 border-sky-400 outline-none bg-sky-50 font-bold" value={ordenEditada.tratado || ''} onChange={e => handleEditProd('tratado', e.target.value)} /> : <p className="font-bold text-slate-800">{ordenSeleccionada?.tratado||'N/A'}</p>}
+                    </div>
                   </div>
                 </div>
 
-                <div className="bg-slate-100 p-4 rounded-xl flex justify-between items-center text-sm"><div><span className="text-[10px] font-bold text-slate-500 block uppercase">CAJA</span><p className="font-extrabold text-slate-800">Total: S/ {ordenSeleccionada?.total || 0}</p></div><div className="text-right"><span className="text-[10px] font-bold text-slate-500 block uppercase">ESTADO</span><p className={`font-extrabold ${Number(ordenSeleccionada?.saldo)>0?'text-rose-600':'text-emerald-600'}`}>{Number(ordenSeleccionada?.saldo)>0?`Saldo: S/ ${ordenSeleccionada.saldo}`:'Cancelado al 100%'}</p></div></div>
+                <div className="bg-slate-100 p-4 rounded-xl flex justify-between items-center text-sm">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 block uppercase">CAJA</span>
+                    {modoEdicion ? (
+                      <div className="flex items-center space-x-1">
+                        <span className="font-extrabold text-slate-800">Total: S/</span>
+                        <input type="number" className="w-20 border-b-2 border-sky-400 outline-none bg-sky-50 font-extrabold text-slate-800" value={ordenEditada.total || ''} onChange={e => handleEditProd('total', e.target.value)} />
+                      </div>
+                    ) : (
+                      <p className="font-extrabold text-slate-800">Total: S/ {ordenSeleccionada?.total || 0}</p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold text-slate-500 block uppercase">ESTADO</span>
+                    <p className={`font-extrabold ${Number(ordenSeleccionada?.saldo)>0?'text-rose-600':'text-emerald-600'}`}>{Number(ordenSeleccionada?.saldo)>0?`Saldo: S/ ${ordenSeleccionada.saldo}`:'Cancelado al 100%'}</p>
+                  </div>
+                </div>
               </div>
-              <div className="p-4 border-t bg-slate-50 text-right"><button onClick={()=>setOrdenSeleccionada(null)} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-lg transition-colors">Cerrar</button></div>
+              
+              <div className="p-4 border-t bg-slate-50 flex justify-end space-x-3 rounded-b-2xl">
+                {modoEdicion ? (
+                  <button onClick={guardarEdicion} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-lg transition-colors shadow-sm">💾 Guardar Cambios</button>
+                ) : (
+                  <button onClick={()=>{setOrdenSeleccionada(null); setModoEdicion(false);}} className="bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-6 py-2.5 rounded-lg transition-colors">Cerrar</button>
+                )}
+              </div>
+
             </div>
           </div>
         )}
